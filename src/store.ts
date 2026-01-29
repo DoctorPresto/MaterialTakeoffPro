@@ -31,7 +31,24 @@ const generateUniqueName = (baseName: string, existingNames: string[]): string =
     return uniqueName;
 };
 
+// --- History Interfaces ---
+interface HistoryState {
+    materials: MaterialDef[];
+    assemblyDefs: AssemblyDef[];
+    projectInfo: ProjectInfo;
+    buildingData: BuildingData;
+    measurements: Measurement[];
+    itemSets: ItemSet[];
+}
+
 interface AppState {
+    // History
+    past: HistoryState[];
+    future: HistoryState[];
+    undo: () => void;
+    redo: () => void;
+    saveHistory: () => void;
+
     materials: MaterialDef[];
     assemblyDefs: AssemblyDef[];
     recentFiles: RecentFile[];
@@ -42,7 +59,7 @@ interface AppState {
     lastModified: number;
     scale: number;
     activePageIndex: number;
-    activeTool: 'select' | 'line' | 'shape';
+    activeTool: 'select' | 'line' | 'shape' | 'measure';
     activeWizardTool: string | null;
     activeMeasurementId: string | null;
     isCalibrating: boolean;
@@ -50,42 +67,51 @@ interface AppState {
     pan: { x: number; y: number };
     measurements: Measurement[];
     itemSets: ItemSet[];
+
     createEstimate: () => void;
     closeEstimate: () => void;
     saveEstimate: () => void;
     loadEstimateFromFile: (fileData: EstimateFile) => void;
     loadRecent: (id: string) => void;
+
     updateProjectInfo: (updates: Partial<ProjectInfo>) => void;
     updateBuildingData: (updates: Partial<BuildingData>) => void;
     setScale: (s: number) => void;
     setPageIndex: (index: number) => void;
-    setTool: (t: 'select' | 'line' | 'shape') => void;
+    setTool: (t: 'select' | 'line' | 'shape' | 'measure') => void;
     setWizardTool: (tag: string | null) => void;
     setActiveMeasurement: (id: string | null) => void;
     setIsCalibrating: (status: boolean) => void;
     setViewport: (zoom: number, pan: { x: number, y: number }) => void;
+
     addMeasurement: (type: MeasurementType, points: Point[], name: string, tags?: string[]) => void;
     updateMeasurement: (id: string, updates: Partial<Measurement>) => void;
     deleteMeasurement: (id: string) => void;
+    setMeasurements: (measurements: Measurement[]) => void;
     deletePoint: (measurementId: string, pointIndex: number) => void;
-    // UPDATED: clickPoint is now optional (?) to fix TS2554
     insertPointAfter: (measurementId: string, pointIndex: number, clickPoint?: Point) => void;
+
     addMaterial: (mat: Omit<MaterialDef, 'id'>) => void;
     importMaterials: (mats: MaterialDef[]) => void;
     updateMaterial: (id: string, updates: Partial<MaterialDef>) => void;
     deleteMaterial: (id: string) => void;
     cloneMaterial: (id: string) => void;
+
     addAssemblyDef: (name: string, category: string) => void;
     updateAssemblyDef: (id: string, updates: Partial<AssemblyDef>) => void;
     deleteAssemblyDef: (id: string) => void;
     cloneAssemblyDef: (id: string) => void;
     importAssemblyDefs: (defs: AssemblyDef[]) => void;
+
     addVariableToDef: (defId: string, name: string, type: AssemblyVariable['type']) => void;
     deleteVariableFromDef: (defId: string, varId: string) => void;
     addNodeToDef: (defId: string, node: Omit<AssemblyNode, 'id'>) => void;
     updateNodeInDef: (defId: string, nodeId: string, updates: Partial<AssemblyNode>) => void;
     removeNodeFromDef: (defId: string, nodeId: string) => void;
+
     addItemSet: (name: string) => void;
+    setItemSets: (itemSets: ItemSet[]) => void;
+    updateItemSet: (id: string, updates: Partial<ItemSet>) => void;
     deleteItemSet: (id: string) => void;
     addInstanceToSet: (setId: string, defId: string) => void;
     deleteInstanceFromSet: (setId: string, instanceId: string) => void;
@@ -95,6 +121,8 @@ interface AppState {
 export const useStore = create<AppState>()(
     persist(
         (set, get) => ({
+            past: [],
+            future: [],
             materials: [],
             assemblyDefs: [],
             recentFiles: [],
@@ -124,6 +152,61 @@ export const useStore = create<AppState>()(
             measurements: [],
             itemSets: [],
 
+            saveHistory: () => set((state) => {
+                const current: HistoryState = {
+                    materials: state.materials,
+                    assemblyDefs: state.assemblyDefs,
+                    projectInfo: state.projectInfo,
+                    buildingData: state.buildingData,
+                    measurements: state.measurements,
+                    itemSets: state.itemSets
+                };
+                const newPast = [...state.past, current].slice(-50);
+                return { past: newPast, future: [] };
+            }),
+
+            undo: () => set((state) => {
+                if (state.past.length === 0) return state;
+                const previous = state.past[state.past.length - 1];
+                const newPast = state.past.slice(0, -1);
+
+                const current: HistoryState = {
+                    materials: state.materials,
+                    assemblyDefs: state.assemblyDefs,
+                    projectInfo: state.projectInfo,
+                    buildingData: state.buildingData,
+                    measurements: state.measurements,
+                    itemSets: state.itemSets
+                };
+
+                return {
+                    past: newPast,
+                    future: [current, ...state.future],
+                    ...previous
+                };
+            }),
+
+            redo: () => set((state) => {
+                if (state.future.length === 0) return state;
+                const next = state.future[0];
+                const newFuture = state.future.slice(1);
+
+                const current: HistoryState = {
+                    materials: state.materials,
+                    assemblyDefs: state.assemblyDefs,
+                    projectInfo: state.projectInfo,
+                    buildingData: state.buildingData,
+                    measurements: state.measurements,
+                    itemSets: state.itemSets
+                };
+
+                return {
+                    past: [...state.past, current],
+                    future: newFuture,
+                    ...next
+                };
+            }),
+
             createEstimate: () => set({
                 estimateName: "Untitled",
                 pdfFile: null,
@@ -140,10 +223,11 @@ export const useStore = create<AppState>()(
                     numPeaks: 0,
                     valleyLength: 0
                 },
-                scale: 1, activePageIndex: 0, activeMeasurementId: null, measurements: [], itemSets: [], zoom: 1, pan: {x: 0, y: 0}
+                scale: 1, activePageIndex: 0, activeMeasurementId: null, measurements: [], itemSets: [], zoom: 1, pan: {x: 0, y: 0},
+                past: [], future: []
             }),
 
-            closeEstimate: () => set({estimateName: null}),
+            closeEstimate: () => set({estimateName: null, past: [], future: []}),
 
             loadEstimateFromFile: (file) => {
                 const newRecent = {id: uuidv4(), name: file.meta.name, lastOpened: Date.now(), data: file};
@@ -157,7 +241,8 @@ export const useStore = create<AppState>()(
                     itemSets: file.data.itemSets,
                     pdfFile: file.data.pdfBase64,
                     recentFiles: [newRecent, ...state.recentFiles.filter(f => f.name !== file.meta.name)].slice(0, 5),
-                    activePageIndex: 0, activeMeasurementId: null, zoom: 1, pan: {x: 0, y: 0}
+                    activePageIndex: 0, activeMeasurementId: null, zoom: 1, pan: {x: 0, y: 0},
+                    past: [], future: []
                 }));
             },
 
@@ -194,8 +279,8 @@ export const useStore = create<AppState>()(
                 document.body.removeChild(link);
             },
 
-            updateProjectInfo: (updates) => set(s => ({projectInfo: {...s.projectInfo, ...updates}})),
-            updateBuildingData: (updates) => set(s => ({buildingData: {...s.buildingData, ...updates}})),
+            updateProjectInfo: (updates) => { get().saveHistory(); set(s => ({projectInfo: {...s.projectInfo, ...updates}})); },
+            updateBuildingData: (updates) => { get().saveHistory(); set(s => ({buildingData: {...s.buildingData, ...updates}})); },
             setScale: (scale) => set({scale}),
             setPageIndex: (index) => set({activePageIndex: Math.max(0, index)}),
             setTool: (activeTool) => set({activeTool, activeWizardTool: null, isCalibrating: false}),
@@ -208,6 +293,7 @@ export const useStore = create<AppState>()(
             setViewport: (zoom, pan) => set({zoom, pan}),
 
             addMeasurement: (type, points, name, tags = []) => {
+                get().saveHistory();
                 const {activePageIndex, measurements, activeWizardTool} = get();
                 const existingNames = measurements.map(m => m.name);
                 const uniqueName = generateUniqueName(name, existingNames);
@@ -223,207 +309,272 @@ export const useStore = create<AppState>()(
                 set({measurements: [...measurements, newMeasurement]});
             },
 
-            updateMeasurement: (id, updates) => set((s) => {
-                const processedUpdates = {...updates};
-                if (processedUpdates.name !== undefined) {
-                    const existingNames = s.measurements.filter(m => m.id !== id).map(m => m.name);
-                    processedUpdates.name = generateUniqueName(processedUpdates.name, existingNames);
-                }
-                if (processedUpdates.group !== undefined) {
-                    if (processedUpdates.group === '') {
-                        processedUpdates.group = undefined;
-                    } else {
-                        processedUpdates.group = processedUpdates.group.trim();
+            updateMeasurement: (id, updates) => {
+                get().saveHistory();
+                set((s) => {
+                    const processedUpdates = {...updates};
+                    if (processedUpdates.name !== undefined) {
+                        const existingNames = s.measurements.filter(m => m.id !== id).map(m => m.name);
+                        processedUpdates.name = generateUniqueName(processedUpdates.name, existingNames);
                     }
-                }
-                return {measurements: s.measurements.map(m => m.id === id ? {...m, ...processedUpdates} : m)};
-            }),
-
-            deleteMeasurement: (id) => set((s) => ({
-                measurements: s.measurements.filter(m => m.id !== id),
-                activeMeasurementId: s.activeMeasurementId === id ? null : s.activeMeasurementId
-            })),
-            deletePoint: (mId, idx) => set((s) => ({
-                measurements: s.measurements.map(m => {
-                    if (m.id !== mId || m.points.length <= 2) return m;
-                    return {...m, points: m.points.filter((_, i) => i !== idx)};
-                })
-            })),
-
-            // UPDATED IMPLEMENTATION
-            insertPointAfter: (mId, idx, clickPoint?: Point) => set((s) => ({
-                measurements: s.measurements.map(m => {
-                    if (m.id !== mId) return m;
-
-                    // Use exact click location if provided, otherwise midpoint fallback
-                    const newPoint = clickPoint || (() => {
-                        const p1 = m.points[idx];
-                        const nextIdx = (idx + 1) % m.points.length;
-                        if (m.type === 'line' && idx === m.points.length - 1) return null;
-                        const p2 = m.points[nextIdx];
-                        return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-                    })();
-
-                    if (!newPoint) return m;
-
-                    const newPoints = [...m.points];
-                    newPoints.splice(idx + 1, 0, newPoint);
-                    return { ...m, points: newPoints };
-                })
-            })),
-
-            addMaterial: (mat) => set((s) => ({materials: [...s.materials, {...mat, id: mat.sku || uuidv4()}]})),
-            importMaterials: (incomingMaterials) => set((s) => {
-                const materialsMap = new Map<string, MaterialDef>();
-                s.materials.forEach(m => { materialsMap.set(m.sku, { ...m, id: m.sku }); });
-                incomingMaterials.forEach(incomingMat => {
-                    const processedMat: MaterialDef = { ...incomingMat, id: incomingMat.sku };
-                    materialsMap.set(processedMat.sku, processedMat);
+                    if (processedUpdates.group !== undefined) {
+                        if (processedUpdates.group === '') {
+                            processedUpdates.group = undefined;
+                        } else {
+                            processedUpdates.group = processedUpdates.group.trim();
+                        }
+                    }
+                    return {measurements: s.measurements.map(m => m.id === id ? {...m, ...processedUpdates} : m)};
                 });
-                return { materials: Array.from(materialsMap.values()) };
-            }),
-            updateMaterial: (id, updates) => set((s) => ({materials: s.materials.map(m => m.id === id ? {...m, ...updates} : m)})),
-            deleteMaterial: (id) => set((s) => ({materials: s.materials.filter(m => m.id !== id)})),
-            cloneMaterial: (id) => set((s) => {
-                const orig = s.materials.find(m => m.id === id);
-                return orig ? {materials: [...s.materials, {...orig, id: uuidv4(), name: `${orig.name} (Copy)`}]} : s;
-            }),
+            },
 
-            addAssemblyDef: (name, category) => set((s) => {
-                const newId = uuidv4();
-                return {
-                    assemblyDefs: [...s.assemblyDefs, {
-                        id: newId,
-                        name,
-                        category,
-                        variables: [],
-                        children: []
-                    }]
-                };
-            }),
-            updateAssemblyDef: (id, updates) => set((s) => ({assemblyDefs: s.assemblyDefs.map(d => d.id === id ? {...d, ...updates} : d)})),
-            deleteAssemblyDef: (id) => set((s) => ({assemblyDefs: s.assemblyDefs.filter(d => d.id !== id)})),
-            cloneAssemblyDef: (id) => set((s) => {
-                const orig = s.assemblyDefs.find(a => a.id === id);
-                return orig ? {
-                    assemblyDefs: [...s.assemblyDefs, {
-                        ...orig,
-                        id: uuidv4(),
-                        name: `${orig.name} (Copy)`,
-                        variables: orig.variables.map(v => ({...v, id: uuidv4()})),
-                        children: orig.children.map(c => ({...c, id: uuidv4()}))
-                    }]
-                } : s;
-            }),
+            deleteMeasurement: (id) => {
+                get().saveHistory();
+                set((s) => ({
+                    measurements: s.measurements.filter(m => m.id !== id),
+                    activeMeasurementId: s.activeMeasurementId === id ? null : s.activeMeasurementId
+                }));
+            },
 
-            importAssemblyDefs: (incomingDefs) => set((s) => {
-                const assemblyDefsMap = new Map<string, AssemblyDef>();
-                s.assemblyDefs.forEach(def => { assemblyDefsMap.set(def.id, def); });
+            setMeasurements: (measurements) => {
+                get().saveHistory();
+                set({ measurements });
+            },
 
-                incomingDefs.forEach(incomingDef => {
-                    const defId = incomingDef.id || uuidv4();
-                    const processedDef: AssemblyDef = {
-                        ...incomingDef,
-                        id: defId,
-                        variables: (incomingDef.variables || []).map(v => ({
-                            ...v,
-                            id: v.id || uuidv4()
-                        })),
-                        children: (incomingDef.children || []).map(c => {
-                            let resolvedChildId = c.childId;
-                            if (c.childType === 'material') {
-                                const childSku = (c as any).childSku || c.childId;
-                                const material = s.materials.find(m => m.sku === childSku);
-                                if (material) {
-                                    resolvedChildId = material.id;
+            deletePoint: (mId, idx) => {
+                get().saveHistory();
+                set((s) => ({
+                    measurements: s.measurements.map(m => {
+                        if (m.id !== mId || m.points.length <= 2) return m;
+                        return {...m, points: m.points.filter((_, i) => i !== idx)};
+                    })
+                }));
+            },
+
+            insertPointAfter: (mId, idx, clickPoint?: Point) => {
+                get().saveHistory();
+                set((s) => ({
+                    measurements: s.measurements.map(m => {
+                        if (m.id !== mId) return m;
+                        const newPoint = clickPoint || (() => {
+                            const p1 = m.points[idx];
+                            const nextIdx = (idx + 1) % m.points.length;
+                            if (m.type === 'line' && idx === m.points.length - 1) return null;
+                            const p2 = m.points[nextIdx];
+                            return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+                        })();
+                        if (!newPoint) return m;
+                        const newPoints = [...m.points];
+                        newPoints.splice(idx + 1, 0, newPoint);
+                        return { ...m, points: newPoints };
+                    })
+                }));
+            },
+
+            addMaterial: (mat) => { get().saveHistory(); set((s) => ({materials: [...s.materials, {...mat, id: mat.sku || uuidv4()}]})); },
+            importMaterials: (incomingMaterials) => {
+                get().saveHistory();
+                set((s) => {
+                    const materialsMap = new Map<string, MaterialDef>();
+                    s.materials.forEach(m => { materialsMap.set(m.sku, { ...m, id: m.sku }); });
+                    incomingMaterials.forEach(incomingMat => {
+                        const processedMat: MaterialDef = { ...incomingMat, id: incomingMat.sku };
+                        materialsMap.set(processedMat.sku, processedMat);
+                    });
+                    return { materials: Array.from(materialsMap.values()) };
+                });
+            },
+            updateMaterial: (id, updates) => { get().saveHistory(); set((s) => ({materials: s.materials.map(m => m.id === id ? {...m, ...updates} : m)})); },
+            deleteMaterial: (id) => { get().saveHistory(); set((s) => ({materials: s.materials.filter(m => m.id !== id)})); },
+            cloneMaterial: (id) => {
+                get().saveHistory();
+                set((s) => {
+                    const orig = s.materials.find(m => m.id === id);
+                    return orig ? {materials: [...s.materials, {...orig, id: uuidv4(), name: `${orig.name} (Copy)`}]} : s;
+                });
+            },
+
+            addAssemblyDef: (name, category) => {
+                get().saveHistory();
+                set((s) => {
+                    const newId = uuidv4();
+                    return {
+                        assemblyDefs: [...s.assemblyDefs, {
+                            id: newId,
+                            name,
+                            category,
+                            variables: [],
+                            children: []
+                        }]
+                    };
+                });
+            },
+            updateAssemblyDef: (id, updates) => { get().saveHistory(); set((s) => ({assemblyDefs: s.assemblyDefs.map(d => d.id === id ? {...d, ...updates} : d)})); },
+            deleteAssemblyDef: (id) => { get().saveHistory(); set((s) => ({assemblyDefs: s.assemblyDefs.filter(d => d.id !== id)})); },
+            cloneAssemblyDef: (id) => {
+                get().saveHistory();
+                set((s) => {
+                    const orig = s.assemblyDefs.find(a => a.id === id);
+                    return orig ? {
+                        assemblyDefs: [...s.assemblyDefs, {
+                            ...orig,
+                            id: uuidv4(),
+                            name: `${orig.name} (Copy)`,
+                            variables: orig.variables.map(v => ({...v, id: uuidv4()})),
+                            children: orig.children.map(c => ({...c, id: uuidv4()}))
+                        }]
+                    } : s;
+                });
+            },
+
+            importAssemblyDefs: (incomingDefs) => {
+                get().saveHistory();
+                set((s) => {
+                    const assemblyDefsMap = new Map<string, AssemblyDef>();
+                    s.assemblyDefs.forEach(def => { assemblyDefsMap.set(def.id, def); });
+
+                    incomingDefs.forEach(incomingDef => {
+                        const defId = incomingDef.id || uuidv4();
+                        const processedDef: AssemblyDef = {
+                            ...incomingDef,
+                            id: defId,
+                            variables: (incomingDef.variables || []).map(v => ({
+                                ...v,
+                                id: v.id || uuidv4()
+                            })),
+                            children: (incomingDef.children || []).map(c => {
+                                let resolvedChildId = c.childId;
+                                if (c.childType === 'material') {
+                                    const childSku = (c as any).childSku || c.childId;
+                                    const material = s.materials.find(m => m.sku === childSku);
+                                    if (material) {
+                                        resolvedChildId = material.id;
+                                    }
                                 }
-                            }
-                            return {
-                                ...c,
-                                id: c.id || uuidv4(),
-                                childId: resolvedChildId,
-                                formula: c.formula || '0',
-                                round: c.round || 'up',
-                                variableMapping: c.variableMapping || undefined
-                            };
+                                return {
+                                    ...c,
+                                    id: c.id || uuidv4(),
+                                    childId: resolvedChildId,
+                                    formula: c.formula || '0',
+                                    round: c.round || 'up',
+                                    variableMapping: c.variableMapping || undefined
+                                };
+                            })
+                        };
+                        assemblyDefsMap.set(defId, processedDef);
+                    });
+                    return { assemblyDefs: Array.from(assemblyDefsMap.values()) };
+                });
+            },
+
+            addVariableToDef: (defId, name, type) => {
+                get().saveHistory();
+                set((s) => ({
+                    assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : {
+                        ...d,
+                        variables: [...d.variables, {id: uuidv4(), name, type}]
+                    })
+                }));
+            },
+            deleteVariableFromDef: (defId, varId) => {
+                get().saveHistory();
+                set((s) => ({
+                    assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : {
+                        ...d,
+                        variables: d.variables.filter(v => v.id !== varId)
+                    })
+                }));
+            },
+            addNodeToDef: (defId, node) => {
+                get().saveHistory();
+                set((s) => ({
+                    assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : {
+                        ...d,
+                        children: [...d.children, {...node, id: uuidv4()}]
+                    })
+                }));
+            },
+            updateNodeInDef: (defId, nodeId, updates) => {
+                get().saveHistory();
+                set((s) => ({
+                    assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : {
+                        ...d,
+                        children: d.children.map(c => c.id === nodeId ? {...c, ...updates} : c)
+                    })
+                }));
+            },
+            removeNodeFromDef: (defId, nodeId) => {
+                get().saveHistory();
+                set((s) => ({
+                    assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : {
+                        ...d,
+                        children: d.children.filter(c => c.id !== nodeId)
+                    })
+                }));
+            },
+
+            addItemSet: (name) => { get().saveHistory(); set(s => ({itemSets: [...s.itemSets, {id: uuidv4(), name, assemblies: []}]})); },
+
+            setItemSets: (itemSets) => {
+                get().saveHistory();
+                set({ itemSets });
+            },
+
+            updateItemSet: (id, updates) => {
+                get().saveHistory();
+                set(s => ({
+                    itemSets: s.itemSets.map(i => i.id === id ? {...i, ...updates} : i)
+                }));
+            },
+
+            deleteItemSet: (id) => { get().saveHistory(); set(s => ({itemSets: s.itemSets.filter(i => i.id !== id)})); },
+            addInstanceToSet: (setId, defId) => {
+                get().saveHistory();
+                set(s => {
+                    const def = s.assemblyDefs.find(d => d.id === defId);
+                    if (!def) return s;
+                    const initialVars: Record<string, VariableSource> = {};
+                    def.variables.forEach(v => {
+                        let defaultValue: number | string = 0;
+                        if (v.type === 'pitch') defaultValue = ''; else if (v.type === 'boolean') defaultValue = 0; else if (v.type === 'count') {
+                            defaultValue = 1;}
+                        initialVars[v.id] = {type: 'manual', value: defaultValue};
+                    });
+                    const newInstance: ProjectAssembly = {
+                        id: uuidv4(),
+                        assemblyDefId: defId,
+                        name: def.name,
+                        variableValues: initialVars
+                    };
+                    return {
+                        itemSets: s.itemSets.map(set => set.id !== setId ? set : {
+                            ...set,
+                            assemblies: [...set.assemblies, newInstance]
                         })
                     };
-                    assemblyDefsMap.set(defId, processedDef);
                 });
-                return { assemblyDefs: Array.from(assemblyDefsMap.values()) };
-            }),
-
-            addVariableToDef: (defId, name, type) => set((s) => ({
-                assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : {
-                    ...d,
-                    variables: [...d.variables, {id: uuidv4(), name, type}]
-                })
-            })),
-            deleteVariableFromDef: (defId, varId) => set((s) => ({
-                assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : {
-                    ...d,
-                    variables: d.variables.filter(v => v.id !== varId)
-                })
-            })),
-            addNodeToDef: (defId, node) => set((s) => ({
-                assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : {
-                    ...d,
-                    children: [...d.children, {...node, id: uuidv4()}]
-                })
-            })),
-            updateNodeInDef: (defId, nodeId, updates) => set((s) => ({
-                assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : {
-                    ...d,
-                    children: d.children.map(c => c.id === nodeId ? {...c, ...updates} : c)
-                })
-            })),
-            removeNodeFromDef: (defId, nodeId) => set((s) => ({
-                assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : {
-                    ...d,
-                    children: d.children.filter(c => c.id !== nodeId)
-                })
-            })),
-
-            addItemSet: (name) => set(s => ({itemSets: [...s.itemSets, {id: uuidv4(), name, assemblies: []}]})),
-            deleteItemSet: (id) => set(s => ({itemSets: s.itemSets.filter(i => i.id !== id)})),
-            addInstanceToSet: (setId, defId) => set(s => {
-                const def = s.assemblyDefs.find(d => d.id === defId);
-                if (!def) return s;
-                const initialVars: Record<string, VariableSource> = {};
-                def.variables.forEach(v => {
-                    let defaultValue: number | string = 0;
-                    if (v.type === 'pitch') defaultValue = ''; else if (v.type === 'boolean') defaultValue = 0; else if (v.type === 'count') {
-                        defaultValue = 1;}
-                    initialVars[v.id] = {type: 'manual', value: defaultValue};
-                });
-                const newInstance: ProjectAssembly = {
-                    id: uuidv4(),
-                    assemblyDefId: defId,
-                    name: def.name,
-                    variableValues: initialVars
-                };
-                return {
+            },
+            deleteInstanceFromSet: (setId, instanceId) => {
+                get().saveHistory();
+                set(s => ({
                     itemSets: s.itemSets.map(set => set.id !== setId ? set : {
                         ...set,
-                        assemblies: [...set.assemblies, newInstance]
+                        assemblies: set.assemblies.filter(a => a.id !== instanceId)
                     })
-                };
-            }),
-            deleteInstanceFromSet: (setId, instanceId) => set(s => ({
-                itemSets: s.itemSets.map(set => set.id !== setId ? set : {
-                    ...set,
-                    assemblies: set.assemblies.filter(a => a.id !== instanceId)
-                })
-            })),
-            updateInstanceVariable: (setId, instanceId, varId, source) => set(s => ({
-                itemSets: s.itemSets.map(set => set.id !== setId ? set : {
-                    ...set,
-                    assemblies: set.assemblies.map(inst => inst.id !== instanceId ? inst : {
-                        ...inst,
-                        variableValues: {...inst.variableValues, [varId]: source}
+                }));
+            },
+            updateInstanceVariable: (setId, instanceId, varId, source) => {
+                get().saveHistory();
+                set(s => ({
+                    itemSets: s.itemSets.map(set => set.id !== setId ? set : {
+                        ...set,
+                        assemblies: set.assemblies.map(inst => inst.id !== instanceId ? inst : {
+                            ...inst,
+                            variableValues: {...inst.variableValues, [varId]: source}
+                        })
                     })
-                })
-            }))
+                }));
+            }
         }),
         {
             name: 'takeoff-pro-db',

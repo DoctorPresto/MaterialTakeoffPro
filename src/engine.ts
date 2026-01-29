@@ -31,9 +31,10 @@ const resolveValue = (
         if (source.property === 'count') return m.points.length;
 
         if (m.type === 'shape') {
-
             if (source.property === 'area') return getPolygonArea(m.points) / (globalScale * globalScale);
-            if (source.property === 'perimeter') return getPathLength([...m.points, m.points[0]]) / globalScale;
+            if (source.property === 'length') {
+                return getPathLength([...m.points, m.points[0]]) / globalScale;
+            }
         }
 
         if (m.type === 'line') {
@@ -45,7 +46,7 @@ const resolveValue = (
         const groupMeasurements = measurements.filter(m => m.group === source.groupId);
         if (groupMeasurements.length === 0) return 0;
 
-        if (source.property === 'linear') {
+        if (source.property === 'length') {
             // Sum perimeters of shapes + lengths of lines
             let totalLength = 0;
             groupMeasurements.forEach(m => {

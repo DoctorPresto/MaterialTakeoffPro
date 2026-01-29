@@ -45,7 +45,7 @@ export const evaluateFormula = (formula: string, context: Record<string, number>
                 const sanitized = resultExpr.replace(/[^0-9+\-*/(). ]/g, '');
                 return new Function(`return ${sanitized}`)();
             } else {
-                // If condition is false, return 0 (material not used)
+                // If condition is false, return 0
                 return 0;
             }
         }
@@ -102,7 +102,7 @@ export const calculateCommonEdge = (shape1: Measurement, shape2: Measurement, sc
     const edges2 = getEdges(shape2.points);
     let commonLength = 0;
 
-    // Tolerance for "touching" (in pixels)
+    // Tolerance
     const EPSILON = 5;
 
     edges1.forEach(e1 => {

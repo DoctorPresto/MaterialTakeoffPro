@@ -106,7 +106,7 @@ const AssemblyBuilder = () => {
         addVariableToDef, deleteVariableFromDef, addNodeToDef, updateNodeInDef, removeNodeFromDef
     } = useStore();
 
-    const [activeSubTab, setActiveSubTab] = useState<'materials' | 'assemblies'>('materials');
+    const [activeSubTab, setActiveSubTab] = useState<'materials' | 'assemblies'>('assemblies');
     const [status, setStatus] = useState<{ msg: string, type: 'error' | 'success' | null }>({msg: '', type: null});
 
     useEffect(() => {
@@ -126,9 +126,11 @@ const AssemblyBuilder = () => {
     const [matCategory, setMatCategory] = useState('');
     const [matSearch, setMatSearch] = useState('');
 
+    // Assemblies State
     const [activeDefId, setActiveDefId] = useState<string | null>(null);
     const [newDefName, setNewDefName] = useState('');
     const [newDefCategory, setNewDefCategory] = useState('');
+    const [asmSearch, setAsmSearch] = useState('');
 
     const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
     const [newVarName, setNewVarName] = useState('');
@@ -265,6 +267,13 @@ const AssemblyBuilder = () => {
         return materials.filter(m => m.name.toLowerCase().includes(low) || m.sku.toLowerCase().includes(low) || m.category.toLowerCase().includes(low));
     }, [materials, matSearch]);
 
+    // Filter Assemblies for Search
+    const filteredAssemblies = useMemo(() => {
+        if (!asmSearch) return assemblyDefs;
+        const low = asmSearch.toLowerCase();
+        return assemblyDefs.filter(a => a.name.toLowerCase().includes(low) || a.category.toLowerCase().includes(low));
+    }, [assemblyDefs, asmSearch]);
+
     const groupedMaterials = materials.reduce((acc, m) => {
         const cat = m.category || "Uncategorized";
         if (!acc[cat]) acc[cat] = [];
@@ -282,8 +291,8 @@ const AssemblyBuilder = () => {
     return (
         <div className="flex flex-col h-full w-full bg-gray-100 overflow-hidden">
             <div className="bg-white border-b px-4 flex gap-6 shrink-0 shadow-sm z-10">
-                <button className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'materials' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`} onClick={() => setActiveSubTab('materials')}>MaterialDB</button>
                 <button className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'assemblies' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`} onClick={() => setActiveSubTab('assemblies')}>AssemblyDB</button>
+                <button className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'materials' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`} onClick={() => setActiveSubTab('materials')}>MaterialDB</button>
             </div>
             <div className="flex-1 overflow-hidden p-4 w-full">
                 <StatusMessage msg={status.msg} type={status.type}/>
@@ -339,7 +348,6 @@ const AssemblyBuilder = () => {
                                         ))}
                                     </div>
                                 ) : (
-                                    // SORTED HERE
                                     Object.entries(groupedMaterials)
                                         .sort(([a], [b]) => a.localeCompare(b))
                                         .map(([category, items]) => (
@@ -385,23 +393,48 @@ const AssemblyBuilder = () => {
                         </div>
                         <div className="bg-white rounded-lg shadow-sm border flex-1 flex overflow-hidden min-h-0">
                             <div className="w-64 lg:w-80 border-r flex flex-col overflow-hidden shrink-0">
-                                <div className="p-3 border-b bg-gray-50 shrink-0"><span className="font-bold text-gray-600 text-sm">Assembly Library</span></div>
+                                {/* UPDATED: Search Header */}
+                                <div className="p-3 border-b bg-gray-50 flex items-center gap-2 shrink-0">
+                                    <Search size={16} className="text-gray-400"/>
+                                    <input
+                                        className="w-full bg-transparent text-sm outline-none placeholder-gray-400"
+                                        placeholder="Search assemblies..."
+                                        value={asmSearch}
+                                        onChange={e => setAsmSearch(e.target.value)}
+                                    />
+                                </div>
                                 <div className="flex-1 overflow-y-auto p-2 bg-gray-50 min-h-0">
-                                    {/* SORTED HERE */}
-                                    {Object.entries(groupedAssemblies)
-                                        .sort(([a], [b]) => a.localeCompare(b))
-                                        .map(([category, items]) => (
-                                            <CategoryGroup key={category} title={category}>
-                                                <div className="max-h-48 overflow-y-auto">
-                                                    {items.map(d => (
-                                                        <div key={d.id} className={`p-2 border-b last:border-0 flex justify-between items-center group cursor-pointer hover:bg-gray-50 ${activeDefId === d.id ? 'bg-blue-50 border-l-4 border-l-blue-500 pl-1' : ''}`} onClick={() => setActiveDefId(d.id)}>
-                                                            <span className="truncate text-sm font-medium text-gray-700">{d.name}</span>
-                                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={(e) => { e.stopPropagation(); cloneAssemblyDef(d.id); }} className="p-1 text-green-600 hover:bg-white rounded"><Copy size={12}/></button><button onClick={(e) => { e.stopPropagation(); deleteAssemblyDef(d.id); }} className="p-1 text-red-600 hover:bg-white rounded"><Trash2 size={12}/></button></div>
-                                                        </div>
-                                                    ))}
+                                    {asmSearch ? (
+                                        // Flat list for search results
+                                        <div className="space-y-1">
+                                            {filteredAssemblies.map(d => (
+                                                <div key={d.id} className={`p-2 border-b rounded bg-white shadow-sm flex justify-between items-center group cursor-pointer hover:bg-gray-50 ${activeDefId === d.id ? 'bg-blue-50 border border-blue-200' : ''}`} onClick={() => setActiveDefId(d.id)}>
+                                                    <div>
+                                                        <div className="truncate text-sm font-medium text-gray-700">{d.name}</div>
+                                                        <div className="text-xs text-gray-400">{d.category}</div>
+                                                    </div>
+                                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={(e) => { e.stopPropagation(); cloneAssemblyDef(d.id); }} className="p-1 text-green-600 hover:bg-white rounded"><Copy size={12}/></button><button onClick={(e) => { e.stopPropagation(); deleteAssemblyDef(d.id); }} className="p-1 text-red-600 hover:bg-white rounded"><Trash2 size={12}/></button></div>
                                                 </div>
-                                            </CategoryGroup>
-                                        ))}
+                                            ))}
+                                            {filteredAssemblies.length === 0 && <div className="text-xs text-gray-400 p-2 italic text-center">No assemblies found.</div>}
+                                        </div>
+                                    ) : (
+                                        // Grouped list for default view
+                                        Object.entries(groupedAssemblies)
+                                            .sort(([a], [b]) => a.localeCompare(b))
+                                            .map(([category, items]) => (
+                                                <CategoryGroup key={category} title={category}>
+                                                    <div className="max-h-48 overflow-y-auto">
+                                                        {items.map(d => (
+                                                            <div key={d.id} className={`p-2 border-b last:border-0 flex justify-between items-center group cursor-pointer hover:bg-gray-50 ${activeDefId === d.id ? 'bg-blue-50 border-l-4 border-l-blue-500 pl-1' : ''}`} onClick={() => setActiveDefId(d.id)}>
+                                                                <span className="truncate text-sm font-medium text-gray-700">{d.name}</span>
+                                                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={(e) => { e.stopPropagation(); cloneAssemblyDef(d.id); }} className="p-1 text-green-600 hover:bg-white rounded"><Copy size={12}/></button><button onClick={(e) => { e.stopPropagation(); deleteAssemblyDef(d.id); }} className="p-1 text-red-600 hover:bg-white rounded"><Trash2 size={12}/></button></div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </CategoryGroup>
+                                            ))
+                                    )}
                                 </div>
                             </div>
                             <div className="flex-1 min-w-0 flex flex-col overflow-hidden">

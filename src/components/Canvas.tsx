@@ -1,13 +1,11 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Document, Page, pdfjs} from 'react-pdf';
-// FIX: Import worker directly from node_modules using Vite's ?url suffix
-// This ensures the correct path in both Dev and Electron Production
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 import {useStore} from '../store';
-import {MeasurementType, Point} from '../types';
+import {MeasurementType, Point, Measurement} from '../types';
 import {
     Check,
     ChevronDown,
@@ -18,6 +16,7 @@ import {
     Eye,
     EyeOff,
     FileX,
+    GripVertical,
     List,
     Minus,
     MousePointer2,
@@ -35,12 +34,11 @@ import {
     from 'lucide-react';
 
 // Performance optimization constants
-const ZOOM_INCREMENT = 0.05; // 1% zoom increment
+const ZOOM_INCREMENT = 0.05; // 5% zoom increment
 const MAX_ZOOM = 5;
 const MIN_ZOOM = 0.1;
 const RENDER_THROTTLE = 60; // 60fps
 
-// --- Custom Hook for Draggable Panels ---
 const useDraggable = (initialX: number, initialY: number) => {
     const [position, setPosition] = useState({ x: initialX, y: initialY });
     const [isDragging, setIsDragging] = useState(false);
@@ -80,7 +78,6 @@ const useDraggable = (initialX: number, initialY: number) => {
     return { position, handleMouseDown };
 };
 
-// --- Generic Input Modal ---
 const InputModal = ({
                         isOpen, title, label, initialValue, onSave, onCancel
                     }: {
@@ -187,7 +184,6 @@ const ContextMenu = ({
     );
 };
 
-// --- Edge Context Menu ---
 const EdgeContextMenu = ({
                              x, y, onClose, onAddVertex
                          }: {
@@ -227,33 +223,80 @@ const FloatingDrawingPanel = ({
                                   selectedMeasurement,
                                   onToggleMeasurementVisibility,
                                   onOpenProperties,
-                                  onUpdateMeasurement
+                                  onUpdateMeasurement,
+                                  onReorderMeasurements
                               }: {
-    activeTool: string, onToolChange: (tool: 'select' | 'line' | 'shape') => void,
-    isCollapsed: boolean, onToggleCollapse: () => void, measurements: any[], activePageIndex: number,
+    activeTool: string,
+    onToolChange: (tool: 'select' | 'line' | 'shape' | 'measure') => void,
+    isCollapsed: boolean, onToggleCollapse: () => void, measurements: Measurement[], activePageIndex: number,
     onSelectMeasurement: (id: string) => void, selectedMeasurement: string | null,
     onToggleMeasurementVisibility: (id: string) => void,
     onOpenProperties: (id: string) => void,
-    onUpdateMeasurement: (id: string, updates: any) => void
+    onUpdateMeasurement: (id: string, updates: any) => void,
+    onReorderMeasurements: (newGroupOrder: string[]) => void
 }) => {
     const { position, handleMouseDown } = useDraggable(20, 100);
     const [showGroupsList, setShowGroupsList] = useState(true);
     const [draggedMeasurementId, setDraggedMeasurementId] = useState<string | null>(null);
     const [dropTargetGroup, setDropTargetGroup] = useState<string | null>(null);
 
-    const currentPageMeasurements = measurements.filter(m => m.pageIndex === activePageIndex);
+    // Collapsed state for individual groups
+    const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+    // Drag state for group reordering
+    const [draggedGroup, setDraggedGroup] = useState<string | null>(null);
 
-    // Group measurements
-    const groupedMeasurements = currentPageMeasurements.reduce((acc, m) => {
-        const group = m.group || 'Ungrouped';
-        if (!acc[group]) acc[group] = [];
-        acc[group].push(m);
-        return acc;
-    }, {} as Record<string, any[]>);
+    const currentPageMeasurements = useMemo(() =>
+            measurements.filter(m => m.pageIndex === activePageIndex),
+        [measurements, activePageIndex]);
+
+    // Derive strict group order from current measurements array
+    const groupOrder = useMemo(() => {
+        const groups = new Set<string>();
+        currentPageMeasurements.forEach(m => {
+            groups.add(m.group || 'Ungrouped');
+        });
+        return Array.from(groups);
+    }, [currentPageMeasurements]);
+
+    const toggleGroupCollapse = (group: string) => {
+        setCollapsedGroups(prev => ({...prev, [group]: !prev[group]}));
+    };
+
+    // Group DnD Handlers
+    const handleGroupDragStart = (e: React.DragEvent, group: string) => {
+        e.dataTransfer.setData('type', 'group');
+        setDraggedGroup(group);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleGroupDrop = (e: React.DragEvent, targetGroup: string) => {
+        e.preventDefault();
+        const type = e.dataTransfer.getData('type');
+
+        // Handle Group Reordering
+        if (type === 'group' && draggedGroup && draggedGroup !== targetGroup) {
+            const newOrder = [...groupOrder];
+            const oldIndex = newOrder.indexOf(draggedGroup);
+            const newIndex = newOrder.indexOf(targetGroup);
+            newOrder.splice(oldIndex, 1);
+            newOrder.splice(newIndex, 0, draggedGroup);
+            onReorderMeasurements(newOrder);
+        }
+
+        // Handle Measurement Re-grouping (if dropped on header)
+        if (!type && draggedMeasurementId) {
+            const targetGroupName = targetGroup === 'Ungrouped' ? '' : targetGroup;
+            onUpdateMeasurement(draggedMeasurementId, {group: targetGroupName});
+        }
+
+        setDraggedGroup(null);
+        setDraggedMeasurementId(null);
+        setDropTargetGroup(null);
+    };
 
     return (
         <div
-            className="fixed z-50 bg-white rounded-lg shadow-xl border-2 border-gray-200 select-none"
+            className="fixed z-50 bg-white rounded-lg shadow-xl border-2 border-gray-200 select-none w-64"
             style={{left: position.x, top: position.y}}
         >
             {/* Header */}
@@ -310,16 +353,18 @@ const FloatingDrawingPanel = ({
                         >
                             <Square size={16}/> Draw Shape
                         </button>
-                    </div>
 
-                    <div className="h-[1px] bg-gray-200"></div>
-
-                    {/* Instructions */}
-                    <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-                        <div className="font-medium mb-1">Tips:</div>
-                        <div>• Right-click to finish drawing</div>
-                        <div>• Double-click edges to add vertices</div>
-                        <div>• Drag shapes to move them</div>
+                        {/* Measure Tool */}
+                        <button
+                            onClick={() => onToolChange('measure')}
+                            className={`flex items-center gap-2 p-2 rounded text-sm font-medium transition-colors ${
+                                activeTool === 'measure'
+                                    ? 'bg-orange-100 text-orange-700 border border-orange-200'
+                                    : 'hover:bg-gray-100 text-gray-600 border border-transparent'
+                            }`}
+                        >
+                            <Ruler size={16}/> Quick Measure
+                        </button>
                     </div>
 
                     <div className="h-[1px] bg-gray-200"></div>
@@ -333,102 +378,110 @@ const FloatingDrawingPanel = ({
                             <div className="flex items-center gap-2">
                                 <List size={16}/>
                                 <span>Groups & Shapes</span>
-                                <span
-                                    className="text-xs bg-gray-200 px-1.5 py-0.5 rounded">{currentPageMeasurements.length}</span>
+                                <span className="text-xs bg-gray-200 px-1.5 py-0.5 rounded">{currentPageMeasurements.length}</span>
                             </div>
                             {showGroupsList ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
                         </button>
 
                         {showGroupsList && (
-                            <div className="mt-2 max-h-48 overflow-y-auto space-y-1">
-                                {Object.keys(groupedMeasurements).length === 0 && (
+                            <div className="mt-2 max-h-64 overflow-y-auto space-y-1">
+                                {currentPageMeasurements.length === 0 && (
                                     <div className="text-xs text-gray-400 italic text-center py-4">
                                         No Measurements Taken Yet
                                     </div>
                                 )}
-                                {Object.entries(groupedMeasurements).map(([groupName, groupMeasurements]) => {
-                                    const typedGroupMeasurements = groupMeasurements as any[];
+                                {groupOrder.map((groupName) => {
+                                    const items = currentPageMeasurements.filter(m => (m.group || 'Ungrouped') === groupName);
                                     const isDropTarget = dropTargetGroup === groupName;
+                                    const isGroupCollapsed = collapsedGroups[groupName];
+                                    const isDraggingGroup = draggedGroup === groupName;
+
                                     return (
-                                        <div key={groupName} className="mb-2">
+                                        <div
+                                            key={groupName}
+                                            className={`mb-2 transition-opacity ${isDraggingGroup ? 'opacity-40' : 'opacity-100'}`}
+                                            draggable
+                                            onDragStart={(e) => handleGroupDragStart(e, groupName)}
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                e.dataTransfer.dropEffect = 'move';
+                                                setDropTargetGroup(groupName);
+                                            }}
+                                            onDragLeave={() => setDropTargetGroup(null)}
+                                            onDrop={(e) => handleGroupDrop(e, groupName)}
+                                        >
                                             <div
-                                                className={`flex items-center gap-2 p-1 bg-gray-50 rounded text-xs font-medium text-gray-600 transition-colors ${
-                                                    isDropTarget ? 'bg-blue-100 border-2 border-blue-400' : ''
+                                                className={`flex items-center gap-2 p-1.5 bg-gray-50 rounded text-xs font-medium text-gray-600 transition-colors cursor-move border border-transparent ${
+                                                    isDropTarget ? 'bg-blue-100 border-blue-400' : 'hover:bg-gray-100'
                                                 }`}
-                                                onDragOver={(e) => {
-                                                    e.preventDefault();
-                                                    setDropTargetGroup(groupName);
-                                                }}
-                                                onDragLeave={() => {
-                                                    setDropTargetGroup(null);
-                                                }}
-                                                onDrop={(e) => {
-                                                    e.preventDefault();
-                                                    if (draggedMeasurementId) {
-                                                        const targetGroup = groupName === 'Ungrouped' ? '' : groupName;
-                                                        onUpdateMeasurement(draggedMeasurementId, {group: targetGroup});
-                                                    }
-                                                    setDraggedMeasurementId(null);
-                                                    setDropTargetGroup(null);
-                                                }}
                                             >
+                                                <GripVertical size={12} className="text-gray-400" />
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); toggleGroupCollapse(groupName); }}
+                                                    className="hover:bg-gray-200 rounded p-0.5"
+                                                >
+                                                    {isGroupCollapsed ? <ChevronRight size={12}/> : <ChevronDown size={12}/>}
+                                                </button>
+
                                                 <div
-                                                    className="w-3 h-3 rounded border border-gray-300"
+                                                    className="w-2.5 h-2.5 rounded border border-gray-300"
                                                     style={{backgroundColor: getGroupColor(groupName === 'Ungrouped' ? undefined : groupName)}}
                                                 />
-                                                <span>{groupName}</span>
-                                                <span
-                                                    className="text-xs bg-gray-200 px-1 py-0.5 rounded">{typedGroupMeasurements.length}</span>
+                                                <span className="flex-1 truncate select-none">{groupName}</span>
+                                                <span className="text-[10px] bg-gray-200 px-1.5 py-0.5 rounded-full">{items.length}</span>
                                             </div>
-                                            <div className="ml-4 space-y-1 mt-1">
-                                                {typedGroupMeasurements.map((m: any) => (
-                                                    <div
-                                                        key={m.id}
-                                                        draggable
-                                                        onDragStart={(e) => {
-                                                            setDraggedMeasurementId(m.id);
-                                                            e.dataTransfer.effectAllowed = 'move';
-                                                        }}
-                                                        onDragEnd={() => {
-                                                            setDraggedMeasurementId(null);
-                                                            setDropTargetGroup(null);
-                                                        }}
-                                                        className={`flex items-center justify-between p-2 rounded text-xs transition-colors cursor-move ${
-                                                            selectedMeasurement === m.id
-                                                                ? 'bg-blue-100 border border-blue-200'
-                                                                : 'hover:bg-gray-100 border border-transparent'
-                                                        } ${draggedMeasurementId === m.id ? 'opacity-50' : ''}`}
-                                                        onClick={() => onSelectMeasurement(m.id)}
-                                                    >
-                                                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                            {m.type === 'shape' ? <Square size={12}/> :
-                                                                <Spline size={12}/>}
-                                                            <span className="truncate font-medium">{m.name}</span>
+
+                                            {!isGroupCollapsed && (
+                                                <div className="ml-4 space-y-1 mt-1 pl-2 border-l border-gray-200">
+                                                    {items.map((m) => (
+                                                        <div
+                                                            key={m.id}
+                                                            draggable
+                                                            onDragStart={(e) => {
+                                                                e.stopPropagation(); // Stop group drag
+                                                                setDraggedMeasurementId(m.id);
+                                                                e.dataTransfer.effectAllowed = 'move';
+                                                            }}
+                                                            onDragEnd={() => {
+                                                                setDraggedMeasurementId(null);
+                                                                setDropTargetGroup(null);
+                                                            }}
+                                                            className={`flex items-center justify-between p-1.5 rounded text-xs transition-colors cursor-move ${
+                                                                selectedMeasurement === m.id
+                                                                    ? 'bg-blue-100 border border-blue-200'
+                                                                    : 'hover:bg-gray-100 border border-transparent'
+                                                            } ${draggedMeasurementId === m.id ? 'opacity-50' : ''}`}
+                                                            onClick={() => onSelectMeasurement(m.id)}
+                                                        >
+                                                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                                {m.type === 'shape' ? <Square size={12}/> : <Spline size={12}/>}
+                                                                <span className="truncate font-medium">{m.name}</span>
+                                                            </div>
+                                                            <div className="flex gap-1">
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        onOpenProperties(m.id);
+                                                                    }}
+                                                                    className="p-1 hover:bg-gray-200 rounded text-gray-400"
+                                                                    title="Properties"
+                                                                >
+                                                                    <Settings size={12}/>
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        onToggleMeasurementVisibility(m.id);
+                                                                    }}
+                                                                    className="p-1 hover:bg-gray-200 rounded text-gray-400"
+                                                                >
+                                                                    {m.hidden ? <EyeOff size={12}/> : <Eye size={12}/>}
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                        <div className="flex gap-1">
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    onOpenProperties(m.id);
-                                                                }}
-                                                                className="p-1 hover:bg-gray-200 rounded text-gray-400"
-                                                                title="Properties"
-                                                            >
-                                                                <Settings size={12}/>
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    onToggleMeasurementVisibility(m.id);
-                                                                }}
-                                                                className="p-1 hover:bg-gray-200 rounded text-gray-400"
-                                                            >
-                                                                {m.hidden ? <EyeOff size={12}/> : <Eye size={12}/>}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}
@@ -441,7 +494,7 @@ const FloatingDrawingPanel = ({
     );
 };
 
-// --- Properties Panel ---
+// Properties Panel and PDF Manager
 const FloatingPropertiesPanel = ({
                                      measurement, onUpdate, onDelete, onClose, isOpen, allMeasurements
                                  }: {
@@ -641,8 +694,6 @@ const FloatingPropertiesPanel = ({
         </div>
     );
 };
-
-// --- PDF Page Manager ---
 const PDFPageManager = ({
                             numPages, activePageIndex, onPageChange, onRemovePage
                         }: {
@@ -714,7 +765,6 @@ const GROUP_COLORS = [
 
 const getGroupColor = (group: string | undefined): string => {
     if (!group) return '#2563eb'; // default blue
-    // Simple hash function for consistent colors
     let hash = 0;
     for (let i = 0; i < group.length; i++) {
         hash = group.charCodeAt(i) + ((hash << 5) - hash);
@@ -722,11 +772,22 @@ const getGroupColor = (group: string | undefined): string => {
     return GROUP_COLORS[Math.abs(hash) % GROUP_COLORS.length];
 };
 
+//Helper: Format Distance
+const getFormattedDistance = (p1: Point, p2: Point, scale: number) => {
+    const px = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+    const feetDecimal = px / scale;
+    const feet = Math.floor(feetDecimal);
+    const inches = Math.round((feetDecimal - feet) * 12);
+    return `${feet}' ${inches}"`;
+};
+
+
 const Canvas = () => {
     const {
         pdfFile, measurements, activeTool, activePageIndex, isCalibrating, activeWizardTool,
         addMeasurement, updateMeasurement, deleteMeasurement, deletePoint, insertPointAfter,
-        setScale, setIsCalibrating, setPageIndex, zoom, pan, setViewport, setTool, scale
+        setScale, setIsCalibrating, setPageIndex, zoom, pan, setViewport, setTool, scale,
+        setMeasurements, undo, redo
     } = useStore();
 
     const [points, setPoints] = useState<Point[]>([]);
@@ -741,6 +802,7 @@ const Canvas = () => {
     const [selectedShape, setSelectedShape] = useState<string | null>(null);
     const [isDraggingShape, setIsDraggingShape] = useState(false);
     const [shapeStartPos, setShapeStartPos] = useState<Point | null>(null);
+    const [currentMousePos, setCurrentMousePos] = useState<Point | null>(null);
 
     // Double Click Detection State
     const [lastClickTime, setLastClickTime] = useState(0);
@@ -764,11 +826,33 @@ const Canvas = () => {
     const [lastRenderTime, setLastRenderTime] = useState(0);
     const renderTimeoutRef = useRef<NodeJS.Timeout>();
 
-    const handleToolChange = (tool: 'select' | 'line' | 'shape') => {
+    // --- Undo/Redo Key Listener ---
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key.toLowerCase() === 'z') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                        redo();
+                    } else {
+                        undo();
+                    }
+                } else if (e.key.toLowerCase() === 'y') {
+                    e.preventDefault();
+                    redo();
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [undo, redo]);
+
+    const handleToolChange = (tool: 'select' | 'line' | 'shape' | 'measure') => {
         setTool(tool);
         setPoints([]);
         setSelectedShape(null);
         setIsPropertiesPanelOpen(false);
+        setCurrentMousePos(null);
     };
 
     const handleCalibrate = () => {
@@ -790,6 +874,20 @@ const Canvas = () => {
         if (measurement) {
             updateMeasurement(measurementId, {hidden: !measurement.hidden});
         }
+    };
+
+    const handleReorderMeasurements = (newGroupOrder: string[]) => {
+        // Reconstruct measurement array based on new group order
+        const currentPageItems: Measurement[] = [];
+        newGroupOrder.forEach(groupName => {
+            const items = measurements.filter(m =>
+                m.pageIndex === activePageIndex && (m.group || 'Ungrouped') === groupName
+            );
+            currentPageItems.push(...items);
+        });
+
+        const otherPageItems = measurements.filter(m => m.pageIndex !== activePageIndex);
+        setMeasurements([...otherPageItems, ...currentPageItems]);
     };
 
     const screenToPdf = (screenX: number, screenY: number) => {
@@ -874,11 +972,9 @@ const Canvas = () => {
             }
 
             if (activeTool === 'shape') {
-                // Create default square and select immediately
                 const squarePoints = createDefaultSquare({x, y});
                 const finalName = activeWizardTool || 'Shape';
                 addMeasurement('shape', squarePoints, finalName);
-                // Find the newly created shape and open properties panel
                 setTimeout(() => {
                     const newShape = measurements[measurements.length - 1];
                     if (newShape) {
@@ -890,19 +986,27 @@ const Canvas = () => {
                 return;
             }
 
+            // MEASURE TOOL LOGIC
+            if (activeTool === 'measure') {
+                if (points.length >= 1) {
+                    setPoints([{x, y}]);
+                } else {
+                    // First click
+                    setPoints([{x, y}]);
+                }
+                return;
+            }
+
             // Line tool or calibration
             if (activeTool === 'line' && points.length >= 3) {
-                // Check if clicking near the first point to close the shape
                 const firstPoint = points[0];
                 const distance = Math.sqrt(Math.pow(x - firstPoint.x, 2) + Math.pow(y - firstPoint.y, 2));
-                const threshold = 15 / zoom; // Click threshold scales with zoom
+                const threshold = 15 / zoom;
 
                 if (distance < threshold) {
-                    // Close the shape
                     const finalName = activeWizardTool || 'Shape';
                     addMeasurement('shape', points, finalName);
                     setPoints([]);
-                    // Find the newly created shape and open properties panel
                     setTimeout(() => {
                         const newShape = measurements[measurements.length - 1];
                         if (newShape) {
@@ -925,8 +1029,14 @@ const Canvas = () => {
     };
 
     const handleMouseMove = (e: React.MouseEvent) => {
+        const {x, y} = screenToPdf(e.clientX, e.clientY);
+
+        // Always track current mouse pos for tool previews
+        if (activeTool === 'measure' || activeTool === 'line') {
+            setCurrentMousePos({x, y});
+        }
+
         if (draggedVertex) {
-            const {x, y} = screenToPdf(e.clientX, e.clientY);
             const m = measurements.find(m => m.id === draggedVertex.mId);
             if (m) {
                 const newPoints = [...m.points];
@@ -937,7 +1047,6 @@ const Canvas = () => {
         }
 
         if (isDraggingShape && selectedShape && shapeStartPos) {
-            const {x, y} = screenToPdf(e.clientX, e.clientY);
             const dx = x - shapeStartPos.x;
             const dy = y - shapeStartPos.y;
 
@@ -984,11 +1093,10 @@ const Canvas = () => {
             setPoints([]);
             return;
         }
-        if (points.length >= 2) {
+        if (points.length >= 2 && activeTool === 'line') {
             const finalName = activeWizardTool || "Line";
             addMeasurement('line', points, finalName);
             setPoints([]);
-            // Open properties panel for the newly created line
             setTimeout(() => {
                 const newShape = measurements.find(m => m.name === finalName && m.points.length === points.length);
                 if (newShape) {
@@ -997,6 +1105,9 @@ const Canvas = () => {
                     setSelectedShape(newShape.id);
                 }
             }, 0);
+        } else if (activeTool === 'measure') {
+            // Right click cancels measure
+            setPoints([]);
         }
     };
 
@@ -1007,22 +1118,17 @@ const Canvas = () => {
     };
 
     // --- MANUAL DOUBLE CLICK HANDLER ---
-    // Replaces onDoubleClick to avoid issues with event bubbling and tool conflicts
     const handleEdgeMouseDown = (e: React.MouseEvent, mId: string, idx: number) => {
         e.preventDefault(); // Prevent text selection
         e.stopPropagation(); // Prevent canvas drag/selection
 
         const now = Date.now();
-        // Check for double click (within 300ms on same edge)
         if (lastClickId === mId && lastClickIndex === idx && now - lastClickTime < 300) {
             const clickPoint = screenToPdf(e.clientX, e.clientY);
             insertPointAfter(mId, idx, clickPoint);
-
-            // Reset to prevent triple-click triggering multiple times immediately
             setLastClickTime(0);
             setLastClickId(null);
         } else {
-            // First click of a potential double click
             setLastClickTime(now);
             setLastClickId(mId);
             setLastClickIndex(idx);
@@ -1117,7 +1223,6 @@ const Canvas = () => {
                     actions={{
                         deletePoint: () => deletePoint(contextMenu.mId, contextMenu.pIdx),
                         addPoint: () => {
-                            // Explicitly pass undefined to use default midpoint logic
                             insertPointAfter(contextMenu.mId, contextMenu.pIdx, undefined);
                         },
                         rename: () => {
@@ -1151,6 +1256,7 @@ const Canvas = () => {
                 onToggleMeasurementVisibility={handleToggleMeasurementVisibility}
                 onOpenProperties={handleOpenProperties}
                 onUpdateMeasurement={updateMeasurement}
+                onReorderMeasurements={handleReorderMeasurements}
             />
 
             {/* Floating Properties Panel */}
@@ -1159,7 +1265,6 @@ const Canvas = () => {
                     measurement={propertiesPanelMeasurement}
                     onUpdate={(updates) => {
                         updateMeasurement(propertiesPanelMeasurement.id, updates);
-                        // Update the local state to reflect changes
                         setPropertiesPanelMeasurement((prev: any) => ({...prev, ...updates}));
                     }}
                     onDelete={() => {
@@ -1181,7 +1286,6 @@ const Canvas = () => {
                 <div className="flex items-center gap-4 w-1/4">
                     <span className="font-bold text-gray-500 text-xs uppercase tracking-wider">Measurements</span>
 
-                    {/* Calibrate Tool - Moved to top bar */}
                     <button
                         onClick={handleCalibrate}
                         className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
@@ -1245,7 +1349,6 @@ const Canvas = () => {
                             <Minus size={16}/>
                         </button>
 
-                        {/* Zoom Slider */}
                         <div className="flex items-center gap-1 px-2">
                             <input
                                 type="range"
@@ -1273,17 +1376,16 @@ const Canvas = () => {
 
                     <button
                         onClick={() => {
-                            // Fit to page logic
                             if (viewportRef.current) {
                                 const container = viewportRef.current;
                                 const containerWidth = container.clientWidth;
                                 const containerHeight = container.clientHeight;
-                                const pageWidth = 800 * 1.5; // PDF page width * scale
-                                const pageHeight = 1000 * 1.5; // PDF page height * scale
+                                const pageWidth = 800 * 1.5;
+                                const pageHeight = 1000 * 1.5;
 
                                 const scaleX = containerWidth / pageWidth;
                                 const scaleY = containerHeight / pageHeight;
-                                const fitZoom = Math.min(scaleX, scaleY) * 0.9; // 90% to add some padding
+                                const fitZoom = Math.min(scaleX, scaleY) * 0.9;
 
                                 const centerX = (containerWidth - pageWidth * fitZoom) / 2;
                                 const centerY = (containerHeight - pageHeight * fitZoom) / 2;
@@ -1353,7 +1455,6 @@ const Canvas = () => {
                                                     fill={(() => {
                                                         const color = getGroupColor(m.group);
                                                         const opacity = selectedShape === m.id ? '0.4' : '0.3';
-                                                        // Convert hex to rgba
                                                         const r = parseInt(color.slice(1, 3), 16);
                                                         const g = parseInt(color.slice(3, 5), 16);
                                                         const b = parseInt(color.slice(5, 7), 16);
@@ -1369,7 +1470,6 @@ const Canvas = () => {
                                                     }}
                                                 />
 
-                                                {/* Interactive Edges */}
                                                 {m.points.map((p, idx) => {
                                                     const nextP = m.points[(idx + 1) % m.points.length];
                                                     return (
@@ -1398,7 +1498,6 @@ const Canvas = () => {
                                             />
                                         )}
 
-                                        {/* Vertices */}
                                         {m.points.map((p, idx) => (
                                             <circle
                                                 key={idx}
@@ -1421,14 +1520,13 @@ const Canvas = () => {
                                     </g>
                                 ))}
 
-                                {/* Drawing preview */}
                                 {points.length > 0 && (
                                     <g>
                                         <polyline
                                             points={points.map(p => `${p.x},${p.y}`).join(' ')}
                                             fill="none"
-                                            stroke={isCalibrating ? "#facc15" : "#000"}
-                                            strokeDasharray="5,5"
+                                            stroke={isCalibrating ? "#facc15" : (activeTool === 'measure' ? "#f97316" : "#000")}
+                                            strokeDasharray={activeTool === 'measure' ? "4,4" : "5,5"}
                                             strokeWidth={Math.max(1, 2 / zoom)}
                                             vectorEffect="non-scaling-stroke"
                                         />
@@ -1439,12 +1537,65 @@ const Canvas = () => {
                                                 cy={p.y}
                                                 r={Math.max(1.5, (i === 0 && points.length >= 3 && activeTool === 'line' ? 5 : 2.5) / zoom)}
                                                 fill={i === 0 && points.length >= 3 && activeTool === 'line' ? "#10b981" : "white"}
-                                                stroke={i === 0 && points.length >= 3 && activeTool === 'line' ? "#10b981" : "black"}
+                                                stroke={i === 0 && points.length >= 3 && activeTool === 'line' ? "#10b981" : (activeTool === 'measure' ? "#f97316" : "black")}
                                                 strokeWidth={Math.max(0.25, 0.5 / zoom)}
                                                 className={`cursor-pointer ${i === 0 && points.length >= 3 && activeTool === 'line' ? 'animate-pulse' : 'hover:fill-blue-400'}`}
                                                 vectorEffect="non-scaling-stroke"
                                             />
                                         ))}
+                                    </g>
+                                )}
+
+                                {/* Measure Tool - Active Line Preview */}
+                                {activeTool === 'measure' && points.length === 1 && currentMousePos && (
+                                    <g pointerEvents="none">
+                                        <line
+                                            x1={points[0].x} y1={points[0].y}
+                                            x2={currentMousePos.x} y2={currentMousePos.y}
+                                            stroke="#f97316"
+                                            strokeWidth={Math.max(1.5, 2 / zoom)}
+                                            strokeDasharray="4,4"
+                                            vectorEffect="non-scaling-stroke"
+                                        />
+                                        {/* Distance Label */}
+                                        <foreignObject
+                                            x={(points[0].x + currentMousePos.x) / 2 - 40 / zoom}
+                                            y={(points[0].y + currentMousePos.y) / 2 - 12 / zoom}
+                                            width={80 / zoom}
+                                            height={24 / zoom}
+                                        >
+                                            <div className="flex items-center justify-center h-full">
+                                                <span className="bg-orange-500 text-white px-2 py-0.5 rounded shadow text-xs font-bold whitespace-nowrap" style={{fontSize: `${12/zoom}px`}}>
+                                                    {getFormattedDistance(points[0], currentMousePos, scale)}
+                                                </span>
+                                            </div>
+                                        </foreignObject>
+                                    </g>
+                                )}
+
+                                {/* Measure Tool - Completed Line (Temporary) */}
+                                {activeTool === 'measure' && points.length === 2 && (
+                                    <g pointerEvents="none">
+                                        <line
+                                            x1={points[0].x} y1={points[0].y}
+                                            x2={points[1].x} y2={points[1].y}
+                                            stroke="#f97316"
+                                            strokeWidth={Math.max(1.5, 2 / zoom)}
+                                            strokeDasharray="4,4"
+                                            vectorEffect="non-scaling-stroke"
+                                        />
+                                        <foreignObject
+                                            x={(points[0].x + points[1].x) / 2 - 40 / zoom}
+                                            y={(points[0].y + points[1].y) / 2 - 12 / zoom}
+                                            width={80 / zoom}
+                                            height={24 / zoom}
+                                        >
+                                            <div className="flex items-center justify-center h-full">
+                                                <span className="bg-orange-500 text-white px-2 py-0.5 rounded shadow text-xs font-bold whitespace-nowrap" style={{fontSize: `${12/zoom}px`}}>
+                                                    {getFormattedDistance(points[0], points[1], scale)}
+                                                </span>
+                                            </div>
+                                        </foreignObject>
                                     </g>
                                 )}
                             </svg>
@@ -1463,7 +1614,6 @@ const Canvas = () => {
                 </div>
             </div>
 
-            {/* Custom CSS for slider */}
             <style>{`
         .slider::-webkit-slider-thumb {
           appearance: none;

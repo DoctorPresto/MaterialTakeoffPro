@@ -27,7 +27,6 @@ export const SearchableSelector: React.FC<SearchableSelectorProps> = ({
     const [inputValue, setInputValue] = useState('');
     const [isOpen, setIsOpen] = useState(false);
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-    // Added maxHeight to state
     const [dropdownPosition, setDropdownPosition] = useState({top: 0, left: 0, width: 0, maxHeight: 320});
     const containerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -181,7 +180,7 @@ export const SearchableSelector: React.FC<SearchableSelectorProps> = ({
                 top: `${dropdownPosition.top}px`,
                 left: `${dropdownPosition.left}px`,
                 width: `${dropdownPosition.width}px`,
-                maxHeight: `${dropdownPosition.maxHeight}px`, // Applied calculated max-height
+                maxHeight: `${dropdownPosition.maxHeight}px`,
                 zIndex: 9999
             }}
             className="bg-white border rounded shadow-lg overflow-y-auto" // Removed fixed max-h-80 class

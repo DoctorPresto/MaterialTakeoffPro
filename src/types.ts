@@ -50,8 +50,8 @@ export interface AssemblyDef {
 
 export type VariableSource =
     | { type: 'manual'; value: number | string  }
-    | { type: 'measurement'; measurementId: string; property: 'length' | 'area' | 'perimeter' | 'count' }
-    | { type: 'measurementGroup'; groupId: string; property: 'linear' | 'area' | 'count' };
+    | { type: 'measurement'; measurementId: string; property: 'length' | 'area' | 'count' }
+    | { type: 'measurementGroup'; groupId: string; property: 'length' | 'area' | 'count' };
 
 export interface ProjectAssembly {
     id: string;

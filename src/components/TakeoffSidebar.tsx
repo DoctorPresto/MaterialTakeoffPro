@@ -1,6 +1,6 @@
 import {useState, useMemo} from 'react';
 import {useStore} from '../store';
-import {ChevronDown, ChevronRight, Folder, Settings, Trash2, X} from 'lucide-react';
+import {ChevronDown, ChevronRight, Folder, Settings, Trash2, X, GripVertical} from 'lucide-react';
 import {AssemblyDef, ItemSet, Measurement} from '../types';
 import {SearchableSelector} from './SearchableSelector';
 
@@ -11,7 +11,11 @@ const CollapsibleItemSet = ({
                                 onDelete,
                                 onAddInstance,
                                 onDeleteInstance,
-                                onUpdateVar
+                                onUpdateVar,
+                                onReorderAssemblies,
+                                onDragStart,
+                                onDragOver,
+                                onDrop
                             }: {
     itemSet: ItemSet,
     assemblyDefs: AssemblyDef[],
@@ -19,19 +23,22 @@ const CollapsibleItemSet = ({
     onDelete: () => void,
     onAddInstance: (defId: string) => void,
     onDeleteInstance: (instId: string) => void,
-    onUpdateVar: (instId: string, varId: string, val: any) => void
+    onUpdateVar: (instId: string, varId: string, val: any) => void,
+    onReorderAssemblies: (newOrder: any[]) => void,
+    onDragStart: (e: React.DragEvent) => void,
+    onDragOver: (e: React.DragEvent) => void,
+    onDrop: (e: React.DragEvent) => void
 }) => {
     const [isOpen, setIsOpen] = useState(true);
     const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
     const [selectorKey, setSelectorKey] = useState(0);
+    const [draggedAssemblyId, setDraggedAssemblyId] = useState<string | null>(null);
 
     const sourceItems = useMemo(() => {
-        // FIX: Explicitly type the array to support the optional 'secondaryText' property
         const items: { id: string; name: string; category: string; secondaryText?: string }[] = [
             { id: 'manual', name: 'Manual Input', category: 'General' }
         ];
 
-        // Add individual measurements grouped by their group name
         measurements.forEach(m => {
             items.push({
                 id: m.id,
@@ -41,7 +48,6 @@ const CollapsibleItemSet = ({
             });
         });
 
-        // Add groups themselves as selectable items
         const uniqueGroups = Array.from(new Set(measurements.filter(m => m.group).map(m => m.group)));
         uniqueGroups.forEach(group => {
             if (group) {
@@ -57,12 +63,51 @@ const CollapsibleItemSet = ({
         return items;
     }, [measurements]);
 
+    // Assembly DnD Handlers
+    const handleAssemblyDragStart = (e: React.DragEvent, id: string) => {
+        e.stopPropagation(); // Prevent item set drag
+        e.dataTransfer.setData('type', 'assembly');
+        e.dataTransfer.setData('itemSetId', itemSet.id);
+        setDraggedAssemblyId(id);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleAssemblyDrop = (e: React.DragEvent, targetId: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const type = e.dataTransfer.getData('type');
+        const srcItemSetId = e.dataTransfer.getData('itemSetId');
+
+        if (type === 'assembly' && srcItemSetId === itemSet.id && draggedAssemblyId && draggedAssemblyId !== targetId) {
+            const newOrder = [...itemSet.assemblies];
+            const oldIndex = newOrder.findIndex(a => a.id === draggedAssemblyId);
+            const newIndex = newOrder.findIndex(a => a.id === targetId);
+
+            if (oldIndex !== -1 && newIndex !== -1) {
+                const [removed] = newOrder.splice(oldIndex, 1);
+                newOrder.splice(newIndex, 0, removed);
+                onReorderAssemblies(newOrder);
+            }
+        }
+        setDraggedAssemblyId(null);
+    };
+
     return (
-        <div className="border rounded-lg overflow-hidden bg-white shadow-sm mb-4">
-            <div className="bg-gray-100 p-2 flex justify-between items-center border-b cursor-pointer select-none"
+        <div
+            className="border rounded-lg overflow-hidden bg-white shadow-sm mb-4 transition-all"
+            draggable
+            onDragStart={onDragStart}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
+        >
+            <div className="bg-gray-100 p-2 flex justify-between items-center border-b cursor-move select-none"
                  onClick={() => setIsOpen(!isOpen)}>
-                <div className="font-bold text-sm flex items-center gap-2">{isOpen ? <ChevronDown size={14}/> :
-                    <ChevronRight size={14}/>}<Folder size={14} className="text-blue-500"/> {itemSet.name}</div>
+                <div className="font-bold text-sm flex items-center gap-2">
+                    <GripVertical size={14} className="text-gray-400" />
+                    {isOpen ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
+                    <Folder size={14} className="text-blue-500"/> {itemSet.name}
+                </div>
                 <button onClick={(e) => {
                     e.stopPropagation();
                     onDelete();
@@ -93,10 +138,22 @@ const CollapsibleItemSet = ({
                         {itemSet.assemblies.map(inst => {
                             const def = assemblyDefs.find(d => d.id === inst.assemblyDefId);
                             const isEditing = editingInstanceId === inst.id;
+                            const isDragging = draggedAssemblyId === inst.id;
+
                             return (
-                                <div key={inst.id} className="p-2">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm font-medium">{inst.name}</span>
+                                <div
+                                    key={inst.id}
+                                    className={`p-2 transition-opacity ${isDragging ? 'opacity-40' : 'opacity-100'}`}
+                                    draggable
+                                    onDragStart={(e) => handleAssemblyDragStart(e, inst.id)}
+                                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                                    onDrop={(e) => handleAssemblyDrop(e, inst.id)}
+                                >
+                                    <div className="flex justify-between items-center cursor-move">
+                                        <div className="flex items-center gap-2">
+                                            <GripVertical size={14} className="text-gray-300" />
+                                            <span className="text-sm font-medium">{inst.name}</span>
+                                        </div>
                                         <div className="flex gap-1">
                                             <button onClick={() => setEditingInstanceId(isEditing ? null : inst.id)}
                                                     className={`p-1 rounded ${isEditing ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-400'}`}>
@@ -158,7 +215,7 @@ const CollapsibleItemSet = ({
                                                                             onUpdateVar(inst.id, v.id, { type: 'manual', value: 0 });
                                                                         } else if (id.startsWith('group-')) {
                                                                             const groupId = id.replace('group-', '');
-                                                                            const property = v.type === 'area' ? 'area' : v.type === 'count' ? 'count' : 'linear';
+                                                                            const property = v.type === 'area' ? 'area' : v.type === 'count' ? 'count' : 'length';
                                                                             onUpdateVar(inst.id, v.id, { type: 'measurementGroup', groupId, property });
                                                                         } else {
                                                                             const property = v.type === 'area' ? 'area' : v.type === 'count' ? 'count' : 'length';
@@ -181,8 +238,8 @@ const CollapsibleItemSet = ({
                                                                                     ...(inst.variableValues[v.id] as any),
                                                                                     property: e.target.value
                                                                                 })}>
-                                                                            <option value="length">Len</option>
-                                                                            <option value="perimeter">Perim</option>
+                                                                            {/* UPDATED: Removed Perimeter, Length handles both */}
+                                                                            <option value="length">Length</option>
                                                                             <option value="area">Area</option>
                                                                             <option value="count">Count</option>
                                                                         </select>
@@ -194,7 +251,8 @@ const CollapsibleItemSet = ({
                                                                                 ...(inst.variableValues[v.id] as any),
                                                                                 property: e.target.value
                                                                             })}>
-                                                                        <option value="linear">Len</option>
+                                                                        {/* UPDATED: Removed Linear, use Length */}
+                                                                        <option value="length">Length</option>
                                                                         <option value="area">Area</option>
                                                                         <option value="count">Count</option>
                                                                     </select>
@@ -225,11 +283,39 @@ const TakeoffSidebar = () => {
         itemSets,
         addItemSet,
         deleteItemSet,
+        setItemSets,
+        updateItemSet,
         addInstanceToSet,
         deleteInstanceFromSet,
         updateInstanceVariable
     } = useStore();
     const [newItemSetName, setNewItemSetName] = useState('');
+    const [draggedItemSetId, setDraggedItemSetId] = useState<string | null>(null);
+
+    // ItemSet DnD Handlers
+    const handleDragStart = (e: React.DragEvent, id: string) => {
+        e.dataTransfer.setData('type', 'itemSet');
+        setDraggedItemSetId(id);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDrop = (e: React.DragEvent, targetId: string) => {
+        e.preventDefault();
+        const type = e.dataTransfer.getData('type');
+
+        if (type === 'itemSet' && draggedItemSetId && draggedItemSetId !== targetId) {
+            const newOrder = [...itemSets];
+            const oldIndex = newOrder.findIndex(i => i.id === draggedItemSetId);
+            const newIndex = newOrder.findIndex(i => i.id === targetId);
+
+            if (oldIndex !== -1 && newIndex !== -1) {
+                const [removed] = newOrder.splice(oldIndex, 1);
+                newOrder.splice(newIndex, 0, removed);
+                setItemSets(newOrder);
+            }
+        }
+        setDraggedItemSetId(null);
+    };
 
     return (
         <div className="w-80 lg:w-96 bg-white border-l h-full flex flex-col z-20 shadow-xl shrink-0">
@@ -248,11 +334,20 @@ const TakeoffSidebar = () => {
                 </div>
                 <div className="space-y-4">
                     {itemSets.map(set => (
-                        <CollapsibleItemSet key={set.id} itemSet={set} assemblyDefs={assemblyDefs}
-                                            measurements={measurements} onDelete={() => deleteItemSet(set.id)}
-                                            onAddInstance={(defId) => addInstanceToSet(set.id, defId)}
-                                            onDeleteInstance={(instId) => deleteInstanceFromSet(set.id, instId)}
-                                            onUpdateVar={(instId, varId, val) => updateInstanceVariable(set.id, instId, varId, val)}/>
+                        <CollapsibleItemSet
+                            key={set.id}
+                            itemSet={set}
+                            assemblyDefs={assemblyDefs}
+                            measurements={measurements}
+                            onDelete={() => deleteItemSet(set.id)}
+                            onAddInstance={(defId) => addInstanceToSet(set.id, defId)}
+                            onDeleteInstance={(instId) => deleteInstanceFromSet(set.id, instId)}
+                            onUpdateVar={(instId, varId, val) => updateInstanceVariable(set.id, instId, varId, val)}
+                            onReorderAssemblies={(newAssemblies) => updateItemSet(set.id, { assemblies: newAssemblies })}
+                            onDragStart={(e) => handleDragStart(e, set.id)}
+                            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                            onDrop={(e) => handleDrop(e, set.id)}
+                        />
                     ))}
                 </div>
             </div>
