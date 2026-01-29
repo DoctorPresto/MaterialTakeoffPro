@@ -21,7 +21,7 @@ const App = () => {
                     </div>
                     <div className="flex bg-gray-800 rounded p-1">
                         <button onClick={() => setActiveTab('data')}
-                                className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'data' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>Data
+                                className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'data' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>Project Info
                         </button>
                         <button onClick={() => setActiveTab('measure')}
                                 className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'measure' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>Measurements
@@ -30,7 +30,7 @@ const App = () => {
                                 className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'materials' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>Materials
                         </button>
                         <button onClick={() => setActiveTab('setup')}
-                                className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'setup' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>AssemblyDB
+                                className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'setup' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>Database
                         </button>
                     </div>
                 </div>
