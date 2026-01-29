@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    body {
+        @apply bg-gray-100 text-gray-900;
+    }
+}
+
+/* React-PDF Specific Fixes to ensure canvas renders correctly */
+.react-pdf__Page__canvas {
+    margin: 0 auto;
+    display: block;
+    user-select: none;
+}
+
+.react-pdf__Page__textContent {
+    display: none !important;
+}
+
+.react-pdf__Page__annotations {
+    display: none !important;
+}

@@ -1,0 +1,462 @@
+import React, {useEffect, useMemo, useState} from 'react';
+import {useStore} from '../store';
+import {
+    AlertCircle,
+    CheckCircle,
+    ChevronDown,
+    ChevronRight,
+    Copy,
+    Cuboid,
+    Download,
+    Package,
+    Pencil,
+    Plus,
+    Search,
+    Trash2,
+    Upload,
+    X
+} from 'lucide-react';
+import {AssemblyNode} from '../types';
+import {SearchableSelector} from './SearchableSelector';
+
+const CategoryGroup = ({title, children}: { title: string, children: React.ReactNode }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    return (
+        <div className="mb-2 border rounded bg-white overflow-hidden shadow-sm shrink-0">
+            <div
+                className="p-2 bg-gray-50 font-bold text-xs uppercase text-gray-600 flex items-center cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                onClick={() => setIsOpen(!isOpen)}
+            >
+                {isOpen ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
+                <span className="ml-2">{title || "Uncategorized"}</span>
+            </div>
+            {isOpen && <div className="bg-white">{children}</div>}
+        </div>
+    );
+};
+
+const CategorySelector = ({
+                              current, existing, onChange, placeholder
+                          }: {
+    current: string,
+    existing: string[],
+    onChange: (val: string) => void,
+    placeholder: string
+}) => {
+    const [isCreating, setIsCreating] = useState(false);
+    const options = useMemo(() => {
+        const opts = new Set(existing);
+        if (current) opts.add(current);
+        return Array.from(opts).sort();
+    }, [existing, current]);
+
+    if (isCreating) {
+        return (
+            <div className="flex gap-1 w-full">
+                <input
+                    autoFocus
+                    className="border p-2 text-sm rounded w-full bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="Type new category..."
+                    value={current}
+                    onChange={(e) => onChange(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') setIsCreating(false); }}
+                    onBlur={() => { if (!current) setIsCreating(false); }}
+                />
+                <button onClick={() => setIsCreating(false)} className="p-2 text-gray-500 hover:bg-gray-200 rounded bg-gray-100"><X size={14}/></button>
+            </div>
+        );
+    }
+
+    return (
+        <select
+            className="border p-2 text-sm rounded w-full bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+            value={current}
+            onChange={(e) => {
+                if (e.target.value === '___NEW___') {
+                    setIsCreating(true);
+                    onChange('');
+                } else {
+                    onChange(e.target.value);
+                }
+            }}
+        >
+            <option value="">{placeholder}</option>
+            {options.map(c => <option key={c} value={c}>{c}</option>)}
+            <option disabled>──────────</option>
+            <option value="___NEW___">+ Create New Category</option>
+        </select>
+    );
+};
+
+const StatusMessage = ({msg, type}: { msg: string, type: 'error' | 'success' | null }) => {
+    if (!msg || !type) return null;
+    const color = type === 'error' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200';
+    const Icon = type === 'error' ? AlertCircle : CheckCircle;
+    return (
+        <div className={`p-2 rounded border text-xs flex items-center gap-2 mb-4 animate-in fade-in slide-in-from-top-2 ${color}`}>
+            <Icon size={14}/> {msg}
+        </div>
+    );
+};
+
+const AssemblyBuilder = () => {
+    const {
+        materials, assemblyDefs, addMaterial, importMaterials, updateMaterial, deleteMaterial, cloneMaterial,
+        addAssemblyDef, updateAssemblyDef, deleteAssemblyDef, cloneAssemblyDef, importAssemblyDefs,
+        addVariableToDef, deleteVariableFromDef, addNodeToDef, updateNodeInDef, removeNodeFromDef
+    } = useStore();
+
+    const [activeSubTab, setActiveSubTab] = useState<'materials' | 'assemblies'>('materials');
+    const [status, setStatus] = useState<{ msg: string, type: 'error' | 'success' | null }>({msg: '', type: null});
+
+    useEffect(() => {
+        if (status.msg) {
+            const timer = setTimeout(() => setStatus({msg: '', type: null}), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [status]);
+
+    const allMatCategories = useMemo(() => Array.from(new Set(materials.map(m => m.category).filter(Boolean))).sort(), [materials]);
+    const allAsmCategories = useMemo(() => Array.from(new Set(assemblyDefs.map(a => a.category).filter(Boolean))).sort(), [assemblyDefs]);
+
+    const [editingMatId, setEditingMatId] = useState<string | null>(null);
+    const [matName, setMatName] = useState('');
+    const [matSku, setMatSku] = useState('');
+    const [matUom, setMatUom] = useState('EA');
+    const [matCategory, setMatCategory] = useState('');
+    const [matSearch, setMatSearch] = useState('');
+
+    const [activeDefId, setActiveDefId] = useState<string | null>(null);
+    const [newDefName, setNewDefName] = useState('');
+    const [newDefCategory, setNewDefCategory] = useState('');
+
+    const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+    const [newVarName, setNewVarName] = useState('');
+    const [newVarType, setNewVarType] = useState('linear');
+    const [nodeFormula, setNodeFormula] = useState('');
+    const [nodeChildId, setNodeChildId] = useState('');
+    const [nodeType, setNodeType] = useState<'material' | 'assembly'>('material');
+    const [nodeMapping, setNodeMapping] = useState<Record<string, string>>({});
+
+    const activeDef = assemblyDefs.find(d => d.id === activeDefId);
+
+    const handleSaveMaterial = () => {
+        if (!matSku) return setStatus({msg: "SKU is required", type: 'error'});
+        const isDuplicate = materials.some(m => m.sku.toLowerCase() === matSku.toLowerCase() && m.id !== editingMatId);
+        if (isDuplicate) return setStatus({msg: `SKU "${matSku}" already exists.`, type: 'error'});
+        if (editingMatId) {
+            updateMaterial(editingMatId, {name: matName, sku: matSku, uom: matUom, category: matCategory});
+            setStatus({msg: "Material updated", type: 'success'});
+            setEditingMatId(null);
+        } else {
+            addMaterial({name: matName, sku: matSku, uom: matUom, category: matCategory});
+            setStatus({msg: "Material created", type: 'success'});
+        }
+        setMatName(''); setMatSku(''); setMatUom('EA'); setMatCategory('');
+    };
+
+    const handleEditMaterial = (m: any) => {
+        setEditingMatId(m.id);
+        setMatName(m.name);
+        setMatSku(m.sku);
+        setMatUom(m.uom);
+        setMatCategory(m.category);
+    };
+
+    const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            const text = evt.target?.result as string;
+            const lines = text.split('\n');
+            const newMats: any[] = [];
+            const existingSkus = new Set(materials.map(m => m.sku.toLowerCase()));
+            for (let i = 1; i < lines.length; i++) {
+                const [sku, name, uom, category] = lines[i].split(',').map(s => s.trim());
+                if (name && sku && !existingSkus.has(sku.toLowerCase())) {
+                    newMats.push({sku, name, uom: uom || 'EA', category: category || 'Imported'});
+                    existingSkus.add(sku.toLowerCase());
+                }
+            }
+            if (newMats.length > 0) {
+                importMaterials(newMats);
+                setStatus({msg: `Imported ${newMats.length} items`, type: 'success'});
+            } else {
+                setStatus({msg: "No new materials to import", type: 'error'});
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    const handleExportMaterialsCSV = () => {
+        const headers = ["SKU", "Name", "UOM", "Category"];
+        const rows = materials.map(m => [m.sku, m.name, m.uom, m.category]);
+        const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.href = encodedUri; link.download = "materials_export.csv";
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    };
+
+    const handleImportAssembliesJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const data = JSON.parse(evt.target?.result as string);
+                if (Array.isArray(data)) {
+                    importAssemblyDefs(data);
+                    setStatus({msg: `Imported ${data.length} assemblies`, type: 'success'});
+                } else {
+                    setStatus({msg: "Invalid JSON format", type: 'error'});
+                }
+            } catch (err) { setStatus({msg: "Invalid JSON file", type: 'error'}); }
+        };
+        reader.readAsText(file);
+    };
+
+    const handleExportAssembliesJSON = () => {
+        const exportData = assemblyDefs.map(def => ({
+            id: def.id,
+            name: def.name,
+            category: def.category,
+            variables: def.variables,
+            children: def.children.map(c => {
+                const material = c.childType === 'material' ? materials.find(m => m.id === c.childId) : null;
+                return { ...c, childSku: material?.sku || undefined };
+            })
+        }));
+        const jsonContent = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+        const link = document.createElement("a");
+        link.href = jsonContent; link.download = "assemblies_export.json";
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    };
+
+    const handleSaveNode = () => {
+        if (!activeDefId || !nodeChildId) return;
+        const nodeData = {
+            childType: nodeType,
+            childId: nodeChildId,
+            formula: nodeFormula,
+            round: 'up' as const,
+            variableMapping: nodeType === 'assembly' ? nodeMapping : undefined
+        };
+        if (editingNodeId) {
+            updateNodeInDef(activeDefId, editingNodeId, nodeData);
+        } else {
+            addNodeToDef(activeDefId, nodeData);
+        }
+        setNodeFormula(''); setNodeMapping({}); setEditingNodeId(null);
+    };
+
+    const handleEditNode = (node: AssemblyNode) => {
+        setEditingNodeId(node.id);
+        setNodeFormula(node.formula);
+        setNodeChildId(node.childId);
+        setNodeType(node.childType);
+        if (node.variableMapping) setNodeMapping(node.variableMapping);
+    };
+
+    const filteredMaterials = useMemo(() => {
+        if (!matSearch) return materials;
+        const low = matSearch.toLowerCase();
+        return materials.filter(m => m.name.toLowerCase().includes(low) || m.sku.toLowerCase().includes(low) || m.category.toLowerCase().includes(low));
+    }, [materials, matSearch]);
+
+    const groupedMaterials = materials.reduce((acc, m) => {
+        const cat = m.category || "Uncategorized";
+        if (!acc[cat]) acc[cat] = [];
+        acc[cat].push(m);
+        return acc;
+    }, {} as Record<string, typeof materials>);
+
+    const groupedAssemblies = assemblyDefs.reduce((acc, a) => {
+        const cat = a.category || "Uncategorized";
+        if (!acc[cat]) acc[cat] = [];
+        acc[cat].push(a);
+        return acc;
+    }, {} as Record<string, typeof assemblyDefs>);
+
+    return (
+        <div className="flex flex-col h-full w-full bg-gray-100 overflow-hidden">
+            <div className="bg-white border-b px-4 flex gap-6 shrink-0 shadow-sm z-10">
+                <button className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'materials' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`} onClick={() => setActiveSubTab('materials')}>MaterialDB</button>
+                <button className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'assemblies' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`} onClick={() => setActiveSubTab('assemblies')}>AssemblyDB</button>
+            </div>
+            <div className="flex-1 overflow-hidden p-4 w-full">
+                <StatusMessage msg={status.msg} type={status.type}/>
+                {activeSubTab === 'materials' && (
+                    <div className="h-full flex flex-col w-full gap-4">
+                        <div className="bg-white p-3 rounded-lg shadow-sm border shrink-0">
+                            <div className="flex justify-between items-center mb-3 border-b pb-2">
+                                <h3 className="font-bold flex items-center gap-2 text-gray-700"><Package size={16}/> Material Database</h3>
+                                <div className="flex gap-2">
+                                    <button onClick={handleExportMaterialsCSV} className="flex items-center gap-1 bg-green-50 px-3 py-1.5 rounded text-xs hover:bg-green-100 text-green-600 border border-green-100 font-medium transition-colors"><Download size={14}/> Export CSV</button>
+                                    <label className="flex items-center gap-1 cursor-pointer bg-gray-50 px-3 py-1.5 rounded text-xs hover:bg-gray-100 text-blue-600 border border-blue-100 font-medium transition-colors"><Upload size={14}/> Import CSV<input type="file" accept=".csv" className="hidden" onChange={handleImportCSV}/></label>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-12 gap-3 items-end">
+                                <div className="col-span-2">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase">SKU</label>
+                                    <input className="border p-2 text-sm rounded w-full bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none" value={matSku} onChange={e => setMatSku(e.target.value)} placeholder="SKU-123"/>
+                                </div>
+                                <div className="col-span-4">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase">Material Name</label>
+                                    <input className="border p-2 text-sm rounded w-full bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none" value={matName} onChange={e => setMatName(e.target.value)} placeholder="e.g. 2x4 SPF Stud"/>
+                                </div>
+                                <div className="col-span-2 lg:col-span-3">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase">Category</label>
+                                    <CategorySelector current={matCategory} existing={allMatCategories} onChange={setMatCategory} placeholder="Select Category..."/>
+                                </div>
+                                <div className="col-span-1">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase">UOM</label>
+                                    <select className="border p-2 text-sm rounded w-full bg-white" value={matUom} onChange={e => setMatUom(e.target.value)}>
+                                        <option value="EA">EA</option>
+                                        <option value="LNFT">LNFT</option>
+                                        <option value="SQFT">SQFT</option>
+                                    </select>
+                                </div>
+                                <div className="col-span-3 lg:col-span-2 flex gap-1">
+                                    <button className={`w-full py-2 rounded text-sm text-white font-medium shadow-sm transition-all ${editingMatId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-600 hover:bg-blue-700'}`} onClick={handleSaveMaterial}>{editingMatId ? 'Update' : 'Add New'}</button>
+                                    {editingMatId && <button onClick={() => { setEditingMatId(null); setMatName(''); setMatSku(''); }} className="px-2 bg-gray-200 hover:bg-gray-300 rounded text-gray-600"><X size={16}/></button>}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-white rounded-lg shadow-sm border flex-1 flex flex-col overflow-hidden min-h-0">
+                            <div className="p-3 border-b bg-gray-50 flex items-center gap-2 shrink-0">
+                                <Search size={16} className="text-gray-400"/><input className="w-full bg-transparent text-sm outline-none placeholder-gray-400" placeholder="Search materials..." value={matSearch} onChange={e => setMatSearch(e.target.value)}/>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-2 bg-gray-50">
+                                {matSearch ? (
+                                    <div className="space-y-1">
+                                        {filteredMaterials.map(m => (
+                                            <div key={m.id} className="flex justify-between items-center p-3 border rounded bg-white shadow-sm hover:shadow-md transition-shadow">
+                                                <div><div className="flex items-center gap-2"><span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 font-bold">{m.sku}</span><span className="font-medium text-sm text-gray-800">{m.name}</span></div><div className="text-xs text-gray-400 mt-0.5">{m.category} • {m.uom}</div></div>
+                                                <div className="flex gap-1 opacity-60 hover:opacity-100"><button onClick={() => handleEditMaterial(m)} className="p-1.5 hover:bg-blue-50 rounded text-blue-600"><Pencil size={14}/></button><button onClick={() => cloneMaterial(m.id)} className="p-1.5 hover:bg-green-50 rounded text-green-600"><Copy size={14}/></button><button onClick={() => deleteMaterial(m.id)} className="p-1.5 hover:bg-red-50 rounded text-red-600"><Trash2 size={14}/></button></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    // SORTED HERE
+                                    Object.entries(groupedMaterials)
+                                        .sort(([a], [b]) => a.localeCompare(b))
+                                        .map(([category, items]) => (
+                                            <CategoryGroup key={category} title={category}>
+                                                <div className="max-h-60 overflow-y-auto">
+                                                    {items.map(m => (
+                                                        <div key={m.id} className={`border-b last:border-0 p-3 flex justify-between items-center bg-white hover:bg-gray-50 ${editingMatId === m.id ? 'bg-orange-50 border-orange-200' : ''}`}>
+                                                            <div><div className="flex items-center gap-2"><span className="font-mono text-xs font-bold text-gray-500 w-24 truncate block">{m.sku}</span><span className="text-sm font-medium">{m.name}</span></div><div className="text-[10px] text-gray-400 pl-26">{m.uom}</div></div>
+                                                            <div className="flex gap-1"><button onClick={() => handleEditMaterial(m)} className="p-1 text-gray-400 hover:text-blue-600"><Pencil size={14}/></button><button onClick={() => cloneMaterial(m.id)} className="p-1 text-gray-400 hover:text-green-600"><Copy size={14}/></button><button onClick={() => deleteMaterial(m.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={14}/></button></div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </CategoryGroup>
+                                        ))
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {activeSubTab === 'assemblies' && (
+                    <div className="h-full flex flex-col w-full gap-4">
+                        <div className="bg-white p-3 rounded-lg shadow-sm border shrink-0">
+                            <div className="flex justify-between items-center mb-3 border-b pb-2">
+                                <h3 className="font-bold flex items-center gap-2 text-gray-700"><Cuboid size={16}/> Assembly Database</h3>
+                                <div className="flex gap-2">
+                                    <button onClick={handleExportAssembliesJSON} className="flex items-center gap-1 bg-green-50 px-3 py-1.5 rounded text-xs hover:bg-green-100 text-green-600 border border-green-100 font-medium transition-colors"><Download size={14}/> Export JSON</button>
+                                    <label className="flex items-center gap-1 cursor-pointer bg-gray-50 px-3 py-1.5 rounded text-xs hover:bg-gray-100 text-blue-600 border border-blue-100 font-medium transition-colors"><Upload size={14}/> Import JSON<input type="file" accept=".json" className="hidden" onChange={handleImportAssembliesJSON}/></label>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-12 gap-3 items-end">
+                                <div className="col-span-4">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase">Assembly Name</label>
+                                    <input className="border p-2 text-sm rounded w-full bg-gray-50 focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none" value={newDefName} onChange={e => setNewDefName(e.target.value)} placeholder="e.g. Wall Framing Assembly"/>
+                                </div>
+                                <div className="col-span-3 lg:col-span-3">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase">Category</label>
+                                    <CategorySelector current={newDefCategory} existing={allAsmCategories} onChange={setNewDefCategory} placeholder="Select Category..."/>
+                                </div>
+                                <div className="col-span-5 flex gap-1">
+                                    <button className="w-full py-2 rounded text-sm bg-green-600 hover:bg-green-700 text-white font-medium shadow-sm transition-all" onClick={() => { if (newDefName) { addAssemblyDef(newDefName, newDefCategory); setNewDefName(''); setNewDefCategory(''); } }}>Add New Assembly</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-white rounded-lg shadow-sm border flex-1 flex overflow-hidden min-h-0">
+                            <div className="w-64 lg:w-80 border-r flex flex-col overflow-hidden shrink-0">
+                                <div className="p-3 border-b bg-gray-50 shrink-0"><span className="font-bold text-gray-600 text-sm">Assembly Library</span></div>
+                                <div className="flex-1 overflow-y-auto p-2 bg-gray-50 min-h-0">
+                                    {/* SORTED HERE */}
+                                    {Object.entries(groupedAssemblies)
+                                        .sort(([a], [b]) => a.localeCompare(b))
+                                        .map(([category, items]) => (
+                                            <CategoryGroup key={category} title={category}>
+                                                <div className="max-h-48 overflow-y-auto">
+                                                    {items.map(d => (
+                                                        <div key={d.id} className={`p-2 border-b last:border-0 flex justify-between items-center group cursor-pointer hover:bg-gray-50 ${activeDefId === d.id ? 'bg-blue-50 border-l-4 border-l-blue-500 pl-1' : ''}`} onClick={() => setActiveDefId(d.id)}>
+                                                            <span className="truncate text-sm font-medium text-gray-700">{d.name}</span>
+                                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={(e) => { e.stopPropagation(); cloneAssemblyDef(d.id); }} className="p-1 text-green-600 hover:bg-white rounded"><Copy size={12}/></button><button onClick={(e) => { e.stopPropagation(); deleteAssemblyDef(d.id); }} className="p-1 text-red-600 hover:bg-white rounded"><Trash2 size={12}/></button></div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </CategoryGroup>
+                                        ))}
+                                </div>
+                            </div>
+                            <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+                                {activeDef ? (
+                                    <div className="flex flex-col h-full">
+                                        <div className="p-4 border-b bg-gray-50 flex gap-4 items-end shrink-0">
+                                            <div className="flex-[2]"><label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Assembly Name</label><input className="border p-2 text-lg font-bold rounded w-full bg-white focus:ring-1 focus:ring-blue-500 outline-none" value={activeDef.name} onChange={(e) => updateAssemblyDef(activeDef.id, {name: e.target.value})}/></div>
+                                            <div className="flex-1"><label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Category</label><CategorySelector current={activeDef.category} existing={allAsmCategories} onChange={(val) => updateAssemblyDef(activeDef.id, {category: val})} placeholder="Select..."/></div>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0">
+                                            <div className="p-4 rounded border border-yellow-200 bg-yellow-50/50">
+                                                <h5 className="text-xs font-bold uppercase text-yellow-700 mb-3 flex items-center gap-2">1. Input Variables</h5>
+                                                <div className="flex flex-wrap gap-2 mb-4">
+                                                    {activeDef.variables.map(v => (
+                                                        <span key={v.id} className="inline-flex items-center gap-1 bg-white text-gray-700 text-xs pl-2 pr-1 py-1 rounded border shadow-sm"><span className="font-bold">{v.name}</span> <span className="text-gray-400">({v.type})</span><button onClick={() => deleteVariableFromDef(activeDef.id, v.id)} className="ml-1 p-0.5 hover:bg-red-100 hover:text-red-600 rounded"><X size={12}/></button></span>
+                                                    ))}
+                                                </div>
+                                                <div className="flex gap-2"><input className="border p-1.5 text-xs rounded focus:ring-1 focus:ring-yellow-400 outline-none" placeholder="Name" value={newVarName} onChange={e => setNewVarName(e.target.value)}/><select className="border p-1.5 text-xs rounded focus:ring-1 focus:ring-yellow-400 outline-none" value={newVarType} onChange={e => setNewVarType(e.target.value as any)}><option value="linear">Linear</option><option value="area">Area</option><option value="count">Count</option><option value="number">Number</option></select><button className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors" onClick={() => { if (newVarName) { addVariableToDef(activeDef.id, newVarName, newVarType as any); setNewVarName(''); } }}><Plus size={14}/></button></div>
+                                            </div>
+                                            <div className="p-4 rounded border border-blue-200 bg-blue-50/30">
+                                                <h5 className="text-xs font-bold uppercase text-blue-700 mb-3">2. Calculation Logic</h5>
+                                                <div className="space-y-2 mb-4">
+                                                    {activeDef.children.map(c => (
+                                                        <div key={c.id} className={`text-sm border p-3 rounded flex justify-between items-center bg-white shadow-sm ${editingNodeId === c.id ? 'ring-2 ring-blue-400 border-transparent' : ''}`}>
+                                                            <div className="flex items-center gap-3"><span className="font-mono bg-gray-100 px-2 py-0.5 border rounded text-blue-700 font-bold text-xs">{c.formula}</span><span className="text-gray-400 text-xs">&rarr;</span><span className="font-medium text-gray-800">{c.childType === 'material' ? materials.find(m => m.id === c.childId)?.name : assemblyDefs.find(a => a.id === c.childId)?.name}</span></div>
+                                                            <div className="flex gap-1"><button onClick={() => handleEditNode(c)} className="text-gray-400 hover:text-blue-600 p-1"><Pencil size={14}/></button><button onClick={() => removeNodeFromDef(activeDef.id, c.id)} className="text-gray-400 hover:text-red-600 p-1"><Trash2 size={14}/></button></div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <div className={`border p-4 rounded-lg space-y-3 transition-all overflow-x-auto ${editingNodeId ? 'bg-orange-50 border-orange-300 ring-1 ring-orange-200' : 'bg-white'}`}>
+                                                    <div className="flex gap-2 min-w-[500px]">
+                                                        <select className="border p-2 text-xs rounded bg-white" value={nodeType} onChange={e => { setNodeType(e.target.value as any); setNodeChildId(''); }}>
+                                                            <option value="material">Add Material</option>
+                                                            <option value="assembly">Add Sub-Assembly</option>
+                                                        </select>
+                                                        <SearchableSelector
+                                                            items={nodeType === 'material' ? materials.map(m => ({ id: m.id, name: m.name, category: m.category || 'Uncategorized', secondaryText: m.sku })) : assemblyDefs.filter(a => a.id !== activeDefId).map(a => ({ id: a.id, name: a.name, category: a.category || 'Uncategorized' }))}
+                                                            value={nodeChildId} onChange={setNodeChildId} placeholder="Search..." className="flex-1"
+                                                        />
+                                                    </div>
+                                                    <div className="flex gap-2 min-w-[500px]"><input className="border p-2 text-xs rounded flex-1 bg-white font-mono" placeholder="Formula" value={nodeFormula} onChange={e => setNodeFormula(e.target.value)}/><button className={`text-white px-4 py-1.5 text-xs rounded font-bold transition-colors ${editingNodeId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-600 hover:bg-blue-700'}`} onClick={handleSaveNode}>{editingNodeId ? 'Update' : 'Add'}</button></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-center h-full text-gray-400 flex-col gap-2"><Cuboid size={48} className="opacity-20"/><span>Select an Assembly to edit</span></div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default AssemblyBuilder;

@@ -1,0 +1,684 @@
+SKU,Name,UOM,Category
+S1316,1X3X16 SPRUCE STRAPPING,EA,Spruce Lumber
+S1412,1X4X12 SPRUCE STRAPPING,EA,Spruce Lumber
+S1416,1X4X16 SPRUCE STRAPPING,EA,Spruce Lumber
+S1616,1X6X16 SPRUCE STRAPPING,EA,Spruce Lumber
+SR1412,1X4X12 ROUGH SPRUCE,EA,Spruce Lumber
+SR1416,1X4X16 ROUGH SPRUCE,EA,Spruce Lumber
+SS133,Survey Stakes 1x3x3-20pcs/bdl,EA,Spruce Lumber
+BR2816,2X 8X16 BRIDGING 2PC SET,EA,Spruce Lumber
+S228,2X2X8 SPRUCE,EA,Spruce Lumber
+S2312,2X3X12 SPRUCE,EA,Spruce Lumber
+S238,2X3X8 SPRUCE,EA,Spruce Lumber
+S2410,2X4X10 SPRUCE,EA,Spruce Lumber
+S2412,2X4X12 SPRUCE LUMBER,EA,Spruce Lumber
+S2414,2X4X14 SPRUCE,EA,Spruce Lumber
+S2416,2X4X16 SPRUCE,EA,Spruce Lumber
+S2610,2X6X10 SPRUCE,EA,Spruce Lumber
+S2612,2X6X12 SPRUCE,EA,Spruce Lumber
+S2614,2X6X14 SPRUCE,EA,Spruce Lumber
+S2616,2X6X16 SPRUCE,EA,Spruce Lumber
+S2810,2X8X10 SPRUCE,EA,Spruce Lumber
+S2812,2X8X12 SPRUCE,EA,Spruce Lumber
+S2814,2X8X14 SPRUCE,EA,Spruce Lumber
+S2816,2X8X16 SPRUCE,EA,Spruce Lumber
+S288,2X8X8 SPRUCE,EA,Spruce Lumber
+S21010,2X10X10 SPRUCE KD,EA,Spruce Lumber
+S21012,2X10X12 SPRUCE KD,EA,Spruce Lumber
+S21014,2x10x14 SPRUCE KD,EA,Spruce Lumber
+S21016,2X10X16 SPRUCE KD,EA,Spruce Lumber
+S2108,2X10X8 SPRUCE KD,EA,Spruce Lumber
+S21210,2X12X10 SPRUCE KD,EA,Spruce Lumber
+S21212,2X12X12 SPRUCE KD,EA,Spruce Lumber
+S21214,2X12X14 SPRUCE KD,EA,Spruce Lumber
+S21216,2X12X16 SPRUCE LUMBER,EA,Spruce Lumber
+PREM2410458,PREMIUM 2x4x104-5/8 SPF,EA,Spruce Lumber
+S2410458,2x4x104 5/8 SPRUCE STUD,EA,Spruce Lumber
+S248,2x4x96 SPRUCE,EA,Spruce Lumber
+S249258,2x4x92 5/8  SPRUCE STUD,EA,Spruce Lumber
+S2610458,2x6x104 5/8 SPRUCE STUD,EA,Spruce Lumber
+S268,2x6x96    SPRUCE STUD,EA,Spruce Lumber
+S269258,2x6x92 5/8  SPRUCE STUD,EA,Spruce Lumber
+S21020,2X10X20 SPRUCE KD,EA,Spruce Lumber
+S21220,2X12X20 SPRUCE KD,EA,Spruce Lumber
+S21224,2X12X24 SPRUCE 2&B DRY,EA,Spruce Lumber
+S2620,2x6x20 SPRUCE KD,EA,Spruce Lumber
+S2820,2X8X20 SPRUCE KD,EA,Spruce Lumber
+EGOSB34TG,Edge Gold OSB 3/4 T&G,EA,Sheathing  Panels
+OSB12,OSB 1/2 (15/32)Sheathing,EA,Sheathing  Panels
+OSB34,OSB 1/2 (15/32)Sheathing,EA,Sheathing  Panels
+OSB58,OSB,EA,Sheathing  Panels
+OSB58SQ,OSB,EA,Sheathing  Panels
+OSB716,OSB 7/16 Sheathing,EA,Sheathing  Panels
+CSP12,1/2 STD. SPRUCE PLY,EA,Sheathing  Panels
+CSP34SQ,3/4 STD. SPRUCE PLY SQ,EA,Sheathing  Panels
+CSP34TG,3/4 STD. SPRUCE PLY T&G,EA,Sheathing  Panels
+CSP38,3/8 STD. SPRUCE PLY,EA,Sheathing  Panels
+CSP58SQ,5/8 STD. SPRUCE PLY SQ,EA,Sheathing  Panels
+CSP58TG,5/8 STD. SPRUCE PLY T&G,EA,Sheathing  Panels
+SAPLFI12,Plywood G1S  1/2x4x8,EA,Sheathing  Panels
+SAPLFI23/32,Plywood G1S 3/4 x4'x8',EA,Sheathing  Panels
+TTPAN48,Brown Treated Paneling 1/2x4x8,EA,Treated Plywood
+TTPLY12,1/2 BROWN TREATED PLY,EA,Treated Plywood
+TTPLY34,3/4 BROWN TREATED PLY,EA,Treated Plywood
+MDF12,MEDIUM DENSITY FIBREBOARD  1/2x4x8,EA,M.D.F. panels
+MDF34,MEDIUM DENSITY FIBREBOARD  3/4x4x8,EA,M.D.F. panels
+MDF58,MEDIUM DENSITY FIBREBOARD  5/8X4X8,EA,M.D.F. panels
+MA14,MAHOGANY Underlay 1/4 x 4x8,EA,Specialty panels
+TC1610W,Trusscore Wall & Ceiling 10,EA,TRUSSCORE
+TC1612W,Trusscore Wall & Ceiling 12,EA,TRUSSCORE
+TC1616W,Trusscore Wall & Ceiling 16,EA,TRUSSCORE
+TCH10,Trusscore H Channel Snap-In Kit,EA,TRUSSCORE
+TCJ12W,Trusscore J trim - 1/2 x 10,EA,TRUSSCORE
+TT1610,1X6X10 BROWN TREATED,EA,Pressure Treated Lumber
+TT1612,1X6X12 BROWN TREATED,EA,Pressure Treated Lumber
+TT168,1X6X8 BROWN TREATED,EA,Pressure Treated Lumber
+TT54610,5/4X6X10 BROWN TREATED,EA,Pressure Treated Lumber
+TT54612,5/4X6X12 BROWN TREATED,EA,Pressure Treated Lumber
+TT54614,5/4X6X14 BROWN TREATED,EA,Pressure Treated Lumber
+TT54616,5/4X6X16 BROWN TREATED,EA,Pressure Treated Lumber
+TT5468,5/4X6X8 BROWN TREATED,EA,Pressure Treated Lumber
+TT4410,4X4X10 BROWN TREATED,EA,Pressure Treated Lumber
+TT4412,4X4X12 BROWN TREATED,EA,Pressure Treated Lumber
+TT448,4X4X8 BROWN TREATED,EA,Pressure Treated Lumber
+TT6610,6X6X10  BROWN TREATED,EA,Pressure Treated Lumber
+TT6612,6X6X12  BROWN TREATED,EA,Pressure Treated Lumber
+TT6616,6X6X16  BROWN TREATED,EA,Pressure Treated Lumber
+TT668,6X6X8  BROWN TREATED,EA,Pressure Treated Lumber
+TT21010,2X10X10 BROWN TREATED,EA,Pressure Treated Lumber
+TT21012,2X10X12 BROWN TREATED,EA,Pressure Treated Lumber
+TT21014,2X10X14 BROWN TREATED,EA,Pressure Treated Lumber
+TT21016,2X10X16 BROWN TREATED,EA,Pressure Treated Lumber
+TT2108,2X10X8 BROWN TREATED,EA,Pressure Treated Lumber
+TT21212,2X12X12 BROWN TREATED,EA,Pressure Treated Lumber
+TT21216,2X12X16 BROWN TREATED,EA,Pressure Treated Lumber
+TT2410,2X4X10 BROWN TREATED,EA,Pressure Treated Lumber
+TT2412,2X4X12 BROWN TREATED,EA,Pressure Treated Lumber
+TT2416,2X4X16 BROWN TREATED,EA,Pressure Treated Lumber
+TT248,2X4X8 BROWN TREATED,EA,Pressure Treated Lumber
+TT2610,2X6X10 BROWN TREATED,EA,Pressure Treated Lumber
+TT2612,2X6X12 BROWN TREATED,EA,Pressure Treated Lumber
+TT2614,2X6X14 BROWN TREATED,EA,Pressure Treated Lumber
+TT2616,2X6X16 BROWN TREATED,EA,Pressure Treated Lumber
+TT268,2X6X8 BROWN TREATED,EA,Pressure Treated Lumber
+TT2810,2x8x10 BROWN TREATED,EA,Pressure Treated Lumber
+TT2812,2X8X12 BROWN TREATED,EA,Pressure Treated Lumber
+TT2814,2X8X14 BROWN TREATED,EA,Pressure Treated Lumber
+TT2816,2X8X16 BROWN TREATED,EA,Pressure Treated Lumber
+TT288,2X8X8 BROWN TREATED,EA,Pressure Treated Lumber
+TT2242,2X2X42 BROWN TREATED,EA,Pressure Treated Lumber
+TT2248,2X2X48 BROWN TREATED,EA,Pressure Treated Lumber
+TTLA48,4X8 BROWN TRTD LATTICE 1-1/4,EA,Pressure Treated Accessory
+TTLA48SQ,LATTICE PRIVACY SQUARE 4X8 BROWN TRTD  1-3/4,EA,Pressure Treated Accessory
+TTST3,TERRA TREATD 3 STEP STRGR,EA,Pressure Treated Accessory
+TTST5,TERRA TREATD 5 STEP STRGR,EA,Pressure Treated Accessory
+TTST6,TERRA TREATD 6 STEP STRGR,EA,Pressure Treated Accessory
+144-500,Wood Care Cleaner (Exterior) 850G,EA,Pressure Treated Accessory
+22040,INT/EXT 4PC PAINT BRUSH SET,EA,Pressure Treated Accessory
+3121-3,BRUSH3IN POLY STAIN,EA,Pressure Treated Accessory
+758C7397,WOOD PROTECTR CEDAR 3.78L,EA,Pressure Treated Accessory
+758C7447,WOOD PROTECTR NTRL 3.78L,EA,Pressure Treated Accessory
+ECP1C,Preservative End Cut Cedar 1L,EA,Pressure Treated Accessory
+LVL1178,LVL BEAM 1-3/4 x 11-7/8,lft,Engineered Wood Products
+LVL14,LVL BEAM 1-3/4 x 14,lft,Engineered Wood Products
+LVL16,LVL BEAM 1 3/4X 16,lft,Engineered Wood Products
+LVL912,LVL BEAM 1 3/4X 9 1/2,lft,Engineered Wood Products
+RIJO117812,RIMBOARD 11-7/8x12,EA,Engineered Wood Products
+RIJO91212,RIMBOARD 9-1/2x12,EA,Engineered Wood Products
+EC412,Joist Eacom PJI-40  11-7/8,lft,Engineered Wood Products
+EC416,Joist Eacom PJI-40 16,lft,Engineered Wood Products
+EC49,Joist Eacom PJI-40 9-1/2,lft,Engineered Wood Products
+FOXBL800,ICF Fox Block 8 Brickledge,EA,ICF
+FOXBUCK6,ICF FoxBlock 6 Buck 10pcs/bag,EA,ICF
+FOXBUCK8,ICF FoxBlock 8Buck 10pcs/bag,EA,ICF
+FOXEC690,ICF FoxBlock 6 90deg Corner,EA,ICF
+FOXEC890,ICF FoxBlock 8 90deg Corner,EA,ICF
+FOXS600,ICF FoxBlock 6 Straight Block,EA,ICF
+FOXS800,ICF FoxBlock 8 Straight Block,EA,ICF
+FOXTB600,ICF FoxBlock 6 T-Block,EA,ICF
+FOXTB800,ICF FoxBlock 8 T-Block,EA,ICF
+FOXTT600,ICF FoxBlock 6 Taper-Top Block,EA,ICF
+FOXTT800,ICF FoxBlock 8 Taper-Top Block,EA,ICF
+FOXXL,XLERATOR FOX BLOCK ,EA,ICF Accessories
+FOXEXTR,ICFFOX 4HEIGHT EXTENDR ,EA,ICF
+FOXHVCLIPS,FOX CLIPS HORIZ/VERT box (250),EA,ICF Accessories
+ICF-D3,ICF Hex washer Head 1/4-20X3.25 box 120 pcs ICF-D3.25,EA,ICF Accessories
+ICF2,ICF SCREW 2 (1000) HEX DRIVE,EA,ICF Accessories
+ICF3,ICF SCREW 3 (1000) HEX DRIVE,EA,ICF Accessories
+ICFVL,CONNECTOR  ICF LEDGER BASE ICFVL,EA,ICF Accessories
+ICFVL-CW,CONNECTORICF J BRACKET 1-3/4 c/w 8 SCREWS,EA,ICF Accessories
+ICFVL-W,CONNECTOR ICF J BRACKET 1.5   c/w 8 SCREWS,EA,ICF Accessories
+ICFVL6,ICFVL6 Steel Ledger Connector ICF Form 6 Legs,EA,ICF Accessories
+ICFWBR,ICF WINDOW BRACKET,EA,ICF Accessories
+MESH5OZ,FIBREMESH 5 oz,EA,ICF Accessories
+PARGB2000,Parging Durock B2000 22kg   roughly 80sft/bag,EA,ICF Accessories
+14987,Silt Fence 36x100,EA,Drainage Pipe
+BIGO100,BIG-O 4 DrainPipe 100 Perf.,EA,Drainage Pipe
+BIGO100FI,BIG-O 4 Drainpipe 100Filtered,EA,Drainage Pipe
+BIGO100SOL,BIG-O 4 Drainpipe 100 SOLID,EA,Drainage Pipe
+BIGO250FI,BIG-O 4Drainpipe 250 Filtered,EA,Drainage Pipe
+BIGO250SOL,BIG-O 4 Drainpipe 250 Solid,EA,Drainage Pipe
+BIGOFILFT,BIG-O Pipe 4 Filtered   LFT,EA,Drainage Pipe
+BIGOLFT,BIG-O Pipe 4 Perforated  LFT,EA,Drainage Pipe
+BIGOSOLFT,BIG-O Pipe 4 Solid   LFT,EA,Drainage Pipe
+GT76073,Geotextile TX80 1.75m x 100  Sold by Roll,EA,Drainage Pipe
+GT76075,Geotextile TX80 1.75M wide LFT  Sold per LFT,EA,Drainage Pipe
+HAU44320,Plastic grating Hauraton  trench dain 1m each,EA,Drainage Pipe
+BIGO90,BIG-O Elbow 90 Degree,EA,Drainage Pipe
+BIGOCO,BIG-O Coupler 4,EA,Drainage Pipe
+BIGOCO6,BIG-O Coupler 6,EA,Drainage Pipe
+BIGOGRT,BIG-O Grate Cap 4,EA,Drainage Pipe
+BIGOPLUG,BIG-O Plug 4,EA,Drainage Pipe
+BIGOT,BIG-O 4 Tee fitting,EA,Drainage Pipe Fittings
+SULILI,SUMP LINER & LID,EA,Drainage Pipe Fittings
+SULISE,RADON SUMP LINER LID & SEAL KIT,EA,Drainage Pipe Fittings
+DMXWE200,DMX WASHERS 65PC,EA,Drainage Membrane
+PLMBRANE60,Platon Membrane 60x656,EA,Drainage Membrane
+PLMLDG,PLATON MOULDING 6,EA,Drainage Membrane
+65655,ELASTOMERIC SEALANT 4KG,EA,Waterproofing Membrane
+ICFMEM,ICF WATERPROOFING MEMBRANE 3X67 RESISTO,EA,Waterproofing Membrane
+WRC2412,2X4X12WESTERN RED CEDAR,EA,Cedar Lumber
+WRC2416,2X4X16WESTERN RED CEDAR,EA,Cedar Lumber
+WRC248,2X4X8 WESTERN RED CEDAR,EA,Cedar Lumber
+WRC2610,2X6X10WESTERN RED CEDAR,EA,Cedar Lumber
+WRC2612,2X6X12WESTERN RED CEDAR,EA,Cedar Lumber
+WRC2614,2X6X14WESTERN RED CEDAR,EA,Cedar Lumber
+WRC2616,2X6X16WESTERN RED CEDAR,EA,Cedar Lumber
+WRC268,2X6X96WESTERN RED CEDAR,EA,Cedar Lumber
+WRC54610,Cedar Decking 5/4x6x10 WRC,EA,Cedar Lumber
+WRC54612,Cedar Decking 5/4x6x12 WRC,EA,Cedar Lumber
+WRC54614,Cedar Decking 5/4x6x14 WRC,EA,Cedar Lumber
+WRC54616,Cedar Decking 5/4x6x16 WRC,EA,Cedar Lumber
+WRC6610,6X6X10 WESTERN RED CEDAR,EA,Cedar Lumber
+WRC668,6X6X8 WESTERN RED CEDAR,EA,Cedar Lumber
+R1215-NEW,INSUL FBRGLS PINK R1215 97.9sft 15x47x3.5,EA,Insulation
+R1223-NEW,INSUL FBRGLS PINK R1223 150.1sft 23x47x3-1/2,EA,Insulation
+R1415,INSUL FBRGLS PINK R1415 78.3sft 15x47x3-1/2,EA,Insulation
+R2015-NEW,INSUL FBRGLS PINK R2015 78.3sft,EA,Insulation
+R2023-NEW,INSUL FBRGLS PINK R2023 120.1sft 23x47x6,EA,Insulation
+R2215,INSUL FBRGLS PINK  R2215 49 sft  15x47x5-1/2,EA,Insulation
+R2223,INSUL FBRGLS PINK  R2223 75.1sft 23x47x5-1/2,EA,Insulation
+R2415,INSUL FBRGLS PINK  R2415 33.7sft   14-3/4x47x5-1/2,EA,Insulation
+R2423,INSUL FBRGLS PINK  R2423 52sft 22-3/4x47x5-1/2,EA,Insulation
+R2815,INSUL FBRGLS PINK R2824,EA,Insulation
+R2824N,INSUL FBRGLS PINK R2824,EA,Insulation
+R3116,INSUL FBRGLS PINK R3116,EA,Insulation
+R3124,INSUL FBRGLS PINK R3124 64sft 24x48x9-1/2  8 pcs/pkg  5 bags/mpk,EA,Insulation
+R4016,INSUL FBRGLS PINK R4016,EA,Insulation
+R4024,INSUL FBRGLS PINK R4024,EA,Insulation
+RX1415,w,EA,Roxul Thermal Insulation
+RX1423,Rockwool Insuln R14 x 23  60.1 sft/bag  8pcs/pkg  Comfort Batt (formerly Roxul),EA,Roxul Thermal Insulation
+RX2215,Rockwool Insuln R22 x 15.25  39.8 sft/bag  8pcs/bag  Comfort Batt (formerly Roxul),EA,Roxul Thermal Insulation
+RX2223,Rockwool Insuln R22 x 23  37.5 sft/bag  5pcs/bag   Comfort Batt (formerly Roxul),EA,Roxul Thermal Insulation
+RX2815,Rockwool Insuln R28 x 15.25  29.86 sft/bag  6pcs/bag  Comfort Batt (formerly Roxul),EA,Roxul Thermal Insulation
+RXSS316,Rockwool Safe & Sound 3x16.25  Steel stud insuln 65 sft/bag  formerly Roxul,EA,Roxul Sound Attenuation Insuln
+RXWS315,Rockwool Safe & Sound 3x15.25  Wood Stud Insuln 59.73 sft/bg,EA,Roxul Sound Attenuation Insuln
+CM201,Cladmate 200Psi 1x2x8 R5 4-Side Shiplap,EA,XPS Rigid Insulation Board
+CM20112,Cladmate 1.5x2x8 R7.5 4-Side Shiplap,EA,XPS Rigid Insulation Board
+CM202,Cladmate 2x2x8 R10 4-Side Shiplap,EA,XPS Rigid Insulation Board
+CM302,Cladmate 300Psi 2x2x8 R10 4-Side Shiplap,EA,XPS Rigid Insulation Board
+APRX1128,PolyIso 1.5 4x8 JohnsManville  R9.3 Foil Faced Rigid Insulation,EA,Foil Faced Foamboard
+APRX128,PolyIso 1/2 4x8 Johns Manville  R2.7 Foil Faced Rigid Foam Insul,EA,Foil Faced Foamboard
+APRX28,Polyiso 2 4x8 Johns Manville  R13 Foil Faced Rigid Insulation,EA,Foil Faced Foamboard
+APRX8,Polyiso 1 4x8 Johns Manville  R6 Foil Faced Rigid Insulation,EA,Foil Faced Foamboard
+APRX9,Polyiso 1 4x9 Johns Manville  R6 Foil Faced Rigid Insulation,EA,Foil Faced Foamboard
+FLEXFM48212,Isolofoam i-FLEXFOAM 160   4x8x2-1/2  R10.1,EA,Isolofoam products
+ISOBRACE-R5,Isobrace OSB - 4x8x 1-9/16 R5,EA,Isolofoam products
+ISOCL48114,ISOCLAD 4x8x1-1/4 W/Airbarrier R5.05,EA,Isolofoam products
+ISOL238,Isolofoam HD160 2-1/2 2x8 R10,EA,Isolofoam products
+ISOL375,Isolofoam HD160 3-3/4 2x8 R15,EA,Isolofoam products
+ISORADV2,ISORAD 4x4x2-1/2 R10 Version2,EA,Isolofoam products
+XHD2002.4,Isolofoam XHD200 2.4 2x8 R10,EA,Isolofoam products
+ICEBLUE,Insulation Blown Cellulose Blue Bag,BAG, Insulation
+PP,Insulation Blown F/G  Pro-Pink   Owens Corning,BAG, Insulation
+FOAM-TNF600,FOAM INSUL2 COMPONENT TNF PRO SYSTEM 600 18kg,EA,Spray Foam Insulation
+FRPAGUN,Froth-Pak Gun/Hose Assembly Dow Accessory Kit,EA,Spray Foam Insulation
+GUNFO,GunFoam Low Expansion  680g  Work Zone,EA,Spray Foam Insulation
+GUNFOAS,Foam All Season Gunfoam,EA,Spray Foam Insulation
+GUNFOCL,Gun Foam Cleaner 340g WorkZone,EA,Spray Foam Insulation
+LOFO,Foam Low Expansion  566g  Small Gap & Crack Filler,EA,Spray Foam Insulation
+LOFO800,Foam Low Expansion  820g  Work Zone Gap Stop,EA,Spray Foam Insulation
+LOFOAP,Foam All Purpose Sealant 820g  Large Gap & Hole Filler,EA,Spray Foam Insulation
+ATTICHAR50,ATTIC HATCH-R50 22x30x13.25,EA,Insulation Accessories
+MJX412,Insulation Fastener 4.5,EA,Insulation Accessories
+SIGA312,SILL GASKET 3-1/2x80,EA,Insulation Accessories
+SIGA512,SILL GASKET 5-1/2x80,EA,Insulation Accessories
+2861500,2M X 86X 1500SFT POLY,EA,Vapour Barrier - Poly
+2101500,2M X 10X 1500SFT POLY,EA,Vapour Barrier - Poly
+6101500,6M X10X1500SFT CGSB POLY,EA,Vapour Barrier - Poly
+6121200,6M X12X1200SFT CGSB POLY,EA,Vapour Barrier - Poly
+612300,6M X12X 300SFT CGSB POLY,EA,Vapour Barrier - Poly
+6161600,6M X16X1600SFT CGSB POLY,EA,Vapour Barrier - Poly
+6202000,6M X20X2000SFT CGSB POLY,EA,Vapour Barrier - Poly
+6861500,6M X861500SFT CGSB POLY,EA,Vapour Barrier - Poly
+686500,6M X86 500SFT CGSB POLY,EA,Vapour Barrier - Poly
+6961500,6M X961500SFT CGSB POLY,EA,Vapour Barrier - Poly
+10099,Joist Guard Resisto 4x75,EA,Housewrap
+65756,Exterior Primer Spray Resisto,EA,Housewrap
+66574,4 ALUMINUM TAPE,EA,Housewrap
+DRAINWRAP10,Tyvek Drainwrap 10x125,EA,Housewrap
+FTAW12,"Flashing Tape All weather Resisto Butylbased 12x75""",EA,Housewrap
+FTAW4,"Flashing Tape All weather Resisto Butylbased 4x75""",EA,Housewrap
+FTAW6,"Flashing Tape All weather Resisto Butylbased 6x75""",EA,Housewrap
+FTAW9,"Flashing Tape All weather Resisto Butylbased 9x75""",EA,Housewrap
+RZCOR,REDZONE CORNER PLASTIC,EA,Housewrap
+TYPAR.CA9,NEW - TYPAR.CA HOUSEWRAP 9x100,EA,Housewrap
+TYPARCA3,NEW TYPAR.CA HOUSEWRAP 3X100,EA,Housewrap
+TYPFLAT12,"Typar 12Flashing Tape All Temp    12x75""",EA,Housewrap
+TYPFLAT4,"Typar 4 Flashing Tape All Temp    4x75""",EA,Housewrap
+TYPFLAT6,"Typar 6 Flashing Tape All Temp    6x75""",EA,Housewrap
+TYPFLAT9,"Typar 9 Flashing Tape All Temp    9x75""",EA,Housewrap
+TYVEK3100,ROLL 3X 100 TYVEK,EA,Housewrap
+GY1210,DRYWALL 4x10x1/2,EA,Drywall
+GY1212,DRYWALL 4x12x1/2,EA,Drywall
+GY128,DRYWALL 4x8x1/2,EA,Drywall
+GY129,DRYWALL 4x9x1/2,EA,Drywall
+GY125410,54X 10X 1/2 DRYWALL,EA,Drywall
+GY125412,54X 12X 1/2 DRYWALL,EA,Drywall
+GY12548,54X 8X 1/2 DRYWALL,EA,Drywall
+GYFG5810,4X 10X 5/8 FIREGARD,EA,Drywall
+GYFG5812,4X 12X 5/8 FIREGARD,EA,Drywall
+GYFG588,4X 8X 5/8 FIREGARD,EA,Drywall
+GYFG585412,54X 12X 5/8 FIREGARD,EA,Drywall
+DENSHIELD12,Denshield 1/2 x 4x8,EA,Drywall
+DENSHIELD58,Denshield 5/8,EA,Drywall
+GYM2128,4x8x1/2 M2 TEK DRYWALL,EA,Drywall
+CEBD35,CEMENT BOARD  1/2 x 3 x 5,EA,Drywall
+CEBD48,Cement Board 1/2x4x8,EA,Cementitious Underlayments
+GYCO10,Cornerbead Steel  10  90deg,EA,Drywall
+GYCO12,Cornerbead Steel  12  90deg,EA,Drywall
+GYCO8,Cornerbead Steel  8  90deg,EA,Drywall
+GYCO9,Cornerbead Steel  9  90deg,EA,Drywall
+GYJ5810,Drywall J Trim 5/8x10 Steel,EA,Drywall
+GYL1210,Drywall L Trim 1/2x10 Steel,EA,Drywall
+GYL5810,Drywall L trim 5/8x10 Steel,EA,Drywall
+G1BNT10,Paperbead 10Bullnose Tape-on,EA,Drywall
+G1XU10,Paperbead 10 O/S Corner 90deg,EA,Drywall
+G1XU12,Paperbead 12 O/S Corner 90deg,EA,Drywall
+G1XU8,Paperbead 8 O/S Corner  90deg,EA,Drywall
+G1XU9,Paperbead 9 O/S Corner 90deg,EA,Drywall
+G2OAIS,Paperbead  8' I/S Corner Offset Angle,EA,Drywall
+ULTRAFLX,Ultraflex Corner 4.5x100  No-Coat,EA,Drywall
+ULTRAFLX325,Ultraflex Corner 3.25x100  no-coat,EA,Drywall
+DURABOND45,COMPOUND 45 DURABOND 15kg,EA,Compounds and Accessories
+DURABOND90,COMPOUND 90 DURABOND 15kg,EA,Compounds and Accessories
+DUSTBANE,DUSTBANE 23 KG,EA,Compounds and Accessories
+FIBAFUSE250,Fibafuse drywall tape 250 roll,EA,Compounds and Accessories
+GSA20,COMPOUND 20 SANDABLE 11kg,EA,Compounds and Accessories
+GSA45,COMPOUND 45 SANDABLE 11kg,EA,Compounds and Accessories
+GSA90,COMPOUND 90 SANDABLE 11kg,EA,Compounds and Accessories
+GYTA500,Tape CGC Drywall  Paper,EA, Compounds and Accessories
+GYWE16DC,Drywall Compound Dust Control  12L Pail,EA,Compounds and Accessories
+GYWE20,GYPSUM COMPOUND  A/P 12L PAIL,EA,Compounds and Accessories
+GYWE23LB,COMPOUND DRYWALL CGC BEIGE 23 kg  lightweight A/P  box,EA,Compounds and Accessories
+GYWE23TP,Compound Drywall  Taping,EA,Compounds and Accessories
+GYWEAPL17,Compnd Drywall  Certainteed A/P  17L White,EA,Compounds and Accessories
+H4S,SCRAPERSTIFF WALL 4,EA,Compounds and Accessories
+OX-P013320,Pro SST Taping Knife- OX Grip 8in 200mm,EA,Compounds and Accessories
+OX-P013325,Pro SST Taping Knife- OX Grip 10in 200mm,EA,Compounds and Accessories
+TT0847,Trimtex Spray Adhesive 454g/16oz  Pressure sensitive  847c,EA,Trimtex Beads  &  Accessories
+TT0881,TRIMTEXSANDING SPONGE FINE GRIT,EA,Trimtex Beads  &  Accessories
+TT0888,SANDING SGL ANGLE BLOCK FINE GRIT,EA,Trimtex Beads  &  Accessories
+TT0888M,SANDING SGL ANGLE BLOCK MEDIUM GRIT,EA,Trimtex Beads  &  Accessories
+TT0903,TRIMTEX2 WAY CORNER  350,EA,Trimtex Beads  &  Accessories
+TT0904,TRIMTEXBN 3/4 3-WAY INSIDE CORNER,EA,Trimtex Beads  &  Accessories
+TT0905,TRIMTEX3/4RADUIS ADAPTR 3 WAY INSIDE CORNER,EA,Trimtex Beads  &  Accessories
+TT0911,TRIMTEX3/4RADUIS ADAPTR 3 WAY O/S OFFANGLE CORNER,EA,Trimtex Beads  &  Accessories
+TT0912,TRIMTEX3/4RADUIS ADAPTR 2 WAY I/S OFFANGLE CORNER,EA,Trimtex Beads  &  Accessories
+TT0917,TRIMTEXBN 3/4 BULLNOSE ADAPTER,EA,Trimtex Beads  &  Accessories
+TT0921,TRIMTEX 350 BULL ADAPTER 3 WAY O/S OFFANGLE CORNER,EA,Trimtex Beads  &  Accessories
+TT0923,TRIMTEX 350 BULL ADAPTER 3 WAY OUTSIDE CORNER,EA,Trimtex Beads  &  Accessories
+TT0926,TRIMTEX 350 BULL ADAPTER,EA,Trimtex Beads  &  Accessories
+TT0937,TRIMTEXBN 3/4 BULLNOSE ADAPTER OFF ANGLE,EA,Trimtex Beads  &  Accessories
+TT1110,TRIMTEXJ BEAD 1/2 x 10,EA,Trimtex Beads  &  Accessories
+TT35008,TRIMTEX 350 BULL 8,EA,Trimtex Beads  &  Accessories
+TT35010,TRIMTEX 350 BULL 10,EA,Trimtex Beads  &  Accessories
+TT4008,TRIMTEXCORNR BEAD 1-1/4 8,EA,Trimtex Beads  &  Accessories
+TT4010,TRIMTEXCORNR BEAD 1-1/4 10,EA,Trimtex Beads  &  Accessories
+TT4208,TRIMTEXCORNR BEAD SPLYD 8,EA,Trimtex Beads  &  Accessories
+TT4308,TRIMTEXADJ INSIDE CORNR BEAD 8,EA,Trimtex Beads  &  Accessories
+TT7010,TRIMTEXBN 3/4ROUND CORNER BEAD 10,EA,Trimtex Beads  &  Accessories
+TT7108,TRIMTEXBN 3/4ROUND ARCH SPLAYED CORNER BEAD 8,EA,Trimtex Beads  &  Accessories
+TT7110,TRIMTEXBN 3/4ROUND ARCH SPLAYED CORNER BEAD 10,EA,Trimtex Beads  &  Accessories
+TT7308,TRIMTEXBN 3/4ROUND SPLAYED CORNER BEAD 8,EA,Trimtex Beads  &  Accessories
+TT9010,TRIMTEXTEAR AWAY L BEAD 1/2 x 10,EA,Trimtex Beads  &  Accessories
+TTAS5510,ARCHITECTURAL 1/2 x 1/2 Z SHADOW BEAD 10,EA,Trimtex Beads  &  Accessories
+AMB,Shingle O/C Duration Amber,BDL, Owens Corning Duration Shingles
+BR,Shingle O/C Duration Brownwood,BDL, Owens Corning Duration Shingles
+CHGR,Shingle O/C Duration Ch.Green,BDL, Owens Corning Duration Shingles
+COLSLT,Shingle O/C Duration Col.Slate,BDL, Owens Corning Duration Shingles
+DESROS,Shingle O/C Duration Desert Rose,BDL, Owens Corning Duration Shingles
+DESTAN,Shingle O/C Duration Desert Tan,BDL, Owens Corning Duration Shingles
+DW,Shingle O/C Duration Driftwood,BDL, Owens Corning Duration Shingles 
+ESGY,Shingle O/C Duration Est.Grey,BDL, Owens Corning Duration Shingles
+HARBLU,Shingle O/C Duration Harbor,BDL, Owens Corning Duration Shingles
+ONBL,Shingle O/C Duration Onyx Black,BDL, Owens Corning Duration Shingles
+QUGY,Shingle O/C Duration QuarryGrey,BDL, Owens Corning Duration Shingles
+SIEGRE,Shingle O/C Duration SierraGrey,BDL, Owens Corning Duration Shingles
+SLSTGY,Shingle O/C Duration Slate,BDL, Owens Corning Duration Shingles
+TK,Shingle O/C Duration Teak,BDL, Owens Corning Duration Shingles
+WILGRE,O/C Duration Williamsburg Grey,BDL,Owens Corning Duration Shingles
+OCPAMB,Shingle  Hip & Ridge Amber ,BDL, Owens Corning Duration Shingles
+OCPBR,Shingle  Hip & Ridge Brownwood,BDL, Owens Corning Duration Shingles
+OCPCHGR,Shingle  Hip&Ridge Chateau Green,BDL, Owens Corning Duration Shingles
+OCPDERO,Shingle  Hip & Ridge Desert,BDL, Owens Corning Duration Shingles
+OCPDETA,Shingle  Hip & Ridge Desert Tan,BDL, Owens Corning Duration Shingles
+OCPDW,Shingle  Hip & Ridge Driftwood,BDL, Owens Corning Duration Shingles
+OCPESGY,Shingle  Hip & Ridge Estate Grey,BDL, Owens Corning Duration Shingles
+OCPONBL,Shingle  Hip & Ridge Onyx Black,BDL, Owens Corning Duration Shingles
+OCPQUGY,Shingle  Hip & Ridge Quarry Grey,BDL, Owens Corning Duration Shingles
+OCPSIGY,Shingle  Hip & Ridge Sierra Grey,BDL, Owens Corning Duration Shingles
+OCPSLSTGY,Shingle  Hip & Ridge Slate,BDL, Owens Corning Duration Shingles
+OCPTK,Shingle  Hip & Ridge Teak,BDL, Owens Corning Duration Shingles
+OCPWILLGRE,Shingle Hip&Ridge Williamsburg,BDL, Owens Corning Duration Shingles
+OCSTSH,Owens Corning Starter Shingle,1,Owens Corning Duration Shingles
+GRACE,GRACE Ice & Water Shield 3x67,EA,Rolled Roofing Products
+LASTO,Ice & Water Shield 3 x 65,EA,Rolled Roofing Products
+LASTOEC,Ice & Water Shield ECONO GRADE,EA,Rolled Roofing Products
+LASTOPRO,HIGH TEMP ICE & WATER SHIELD,EA,Rolled Roofing Products
+RESISTUNDER,Resistor SF Synthetic Underlay,EA,Rolled Roofing Products
+STDRSH,Standard Dry Sheating Jona,ROL,Rolled Roofing Products
+TYVEKRL,TYVEK Roofliner Protec 160,ROL,Rolled Roofing Products
+ROFL3,3 NEOPRENE ROOF FLASHING,EA,Roofing Accessories
+ROFL4,4 NEOPRENE ROOF FLASHING,EA,Roofing Accessories
+SHSH,Shim Shingles Cedar Small Pkg,EA,Roofing Accessories
+SHSH99,Shim Shingles Cedar Large Pkg,EA,Roofing Accessories
+BLCHFL,Flashing Black 90deg Wall ,EA,Stock Valley and Wall Flashing
+BLCHFL45,Flashing Black 45deg Wall ,EA,Stock Valley and Wall Flashing
+BLVA,Black Valley 36x10 steel,EA,Stock Valley and Wall Flashing
+BLVA24,Black Valley 24x10 Steel,EA,Stock Valley and Wall Flashing
+BRCHFL,Flashing Brown  90 deg Wall ,EA,Stock Valley and Wall Flashing
+BRCHFL45,Flashing Brown  45 deg Wall ,EA,Stock Valley and Wall Flashing
+BRVA,Brown Valley 36x10 steel,EA,Stock Valley and Wall Flashing
+BRVA24,Brown Valley 24x10 steel,EA,Stock Valley and Wall Flashing
+CHCHFL,Flashing Charcoal 90deg Wall ,EA,Stock Valley and Wall Flashing
+CHCHFL45,Flashing Charcoal  45deg Wall,EA,Stock Valley and Wall Flashing
+CHVA24,Charcoal Valley 24x10 26ga,EA,Stock Valley and Wall Flashing
+CHVA36,Charcoal Valley 36x10,EA,Stock Valley and Wall Flashing
+FOGRCHFL,Flashing F. Green 45deg Wall,EA,Stock Valley and Wall Flashing
+GACHFL,Flashing Galv. 90deg Wall ,EA,Stock Valley and Wall Flashing
+GAVA,Galv. Valley 36x10,EA,Stock Valley and Wall Flashing
+GRVA,Green Valley 36x10 28g,EA,Stock Valley and Wall Flashing
+GRVA24,Green Valley 24x10 Steel 28g,EA,Stock Valley and Wall Flashing
+GYCHFL,Flashing Grey  90deg Wall,EA,Stock Valley and Wall Flashing
+STFL,Step Flashing 3x3x9,EA,Stock Valley and Wall Flashing
+CA4129,Steel Roofing Canadiana Painted,LFT,Steel Roofing and Cladding
+PG1629,Heritage Junior 16 Coverage,LFT,Steel Roofing and Cladding
+PG3626,Steel Roofing Painted 26ga ,LFT,Steel Roofing and Cladding
+PG3628,Steel Roofing Painted 28ga,LFT,Steel Roofing and Cladding
+PG3630,Steel Roofing Painted 30ga,LFT,Steel Roofing and Cladding
+PG4129,Steel Roofing Painted 29ga,LFT,Steel Roofing and Cladding
+PGULTVIC,Steel Roofing UltraVic Painted,LFT,Steel Roofing and Cladding
+BLSGST,Snow Guard Black 26Ga  10,LFT,Steel Roofing and Cladding
+BRSGST,Snow Guard Brown 26ga  10,LFT,Steel Roofing and Cladding
+CHSGST,Snow Guard Charcoal 26ga 10,LFT,Steel Roofing and Cladding
+CHSGST,Snow Guard Charcoal 26ga 10,LFT,Steel Roofing and Cladding
+PGCRC,Cottage Roof Cap,LFT,Steel Roofing and Cladding
+G2MAXXBGE,Gator MAXX G2 Sand Beige,BAG,Landscape Accessories
+G2MAXXBLK,Gator MAXX G2 Sand Black Diamond,BAG,Landscape Accessories
+G2MAXXGRY,Gator MAXX G2 Sand Slate Grey,BAG,Landscape Accessories
+G2MAXXIVRY,Gator MAXX G2 Sand Ivory,BAG,Landscape Accessories
+GATORBASE,Gator Base 5.79 sq. ft coverage,EACH,Landscape Accessories
+GATORFABWOV625,Gator Fabric 6.25 x 300,ROL,Landscape Accessories
+GATORSCREW,Gator Base Screws 50/box,BOX,Landscape Accessories
+GATREDGEFLX,Flexible Plastic paver edge,EACH,Landscape Accessories
+GATREDGERIGID,Rigid Plastic paver edge,EA,Landscape Accessories
+GATREDGEX4,4 Plastic Paver Edge Rigid or,EA,Landscape Accessories
+GATRXTRMDGE,Gator Extreme Edge 50lb Bag,EACH,Landscape Accessories
+NITROSNDBGE,Beige Gator Nitro Sand 5gal,EACH,Landscape Accessories
+NITROSNDBLK,Black Gator Nitro Sand 5gal,EACH,Landscape Accessories
+NITROSNDSILV,Silver Gator Nitro Sand 5gal,EACH,Landscape Accessories
+SO472227-000,Rigid Plastic paver edge,EA,Landscape Accessories
+PISACOPECG,Pisa Coping  Cliffside Grey,EA,Unilock Walls/Pavers
+PISACOPECHAR,Pisa Coping  Charcoal,EA,Unilock Walls/Pavers
+PISACOPEDK,Pisa Coping  Dusk ,EA,Unilock Walls/Pavers
+PISACOPEGG,Pisa Coping  Granite Blend,EA,Unilock Walls/Pavers
+PISAREGCG,Retaining Wall  Cliffside Grey,EA,Unilock Walls/Pavers
+PISAREGCHAR,Pisa Retaining Wall  Charcoal ,EA,Unilock Walls/Pavers
+PISAREGDK,Retaining Wall  Dusk,EA,Unilock Walls/Pavers
+PISAREGGG,Retaining Wall  Granite Grey,EA,Unilock Walls/Pavers
+SIENASTEP48-CG,Siena Step 48 - Cliffside Grey,EA,Unilock Walls/Pavers
+SIENASTEP48-CH,Siena Step 48 - Charcoal,EA,Unilock Walls/Pavers
+SIENASTEP48-GG,Siena Step 48 - Granite Blend,EA,Unilock Walls/Pavers
+UNILOCK,UNILOCK PALLET,EA,Unilock Walls/Pavers
+WINDER70CG,Windermere  70mm Cliffside Grey ,LYR,Unilock Walls/Pavers
+WINDER70CHAR,Windermere  70mm charcoal  ,EA,Unilock Walls/Pavers
+WINDER70DK,Windermere  70mm Dusk  ,LYR,Unilock Walls/Pavers
+WINDER70GG,Windermere  70mm Granite Blend,LYR,Unilock Walls/Pavers
+TREV50SMAUT,Trevista 50mm Smooth Autumn Hill,LYR,Bestway Walls/Pavers
+TREV50SMCAR,Trevista 50mm Smooth Carrara,LYR,Bestway Walls/Pavers
+TREV50SMGRM,Trevista 50mm Smooth Grey Mix,LYR,Bestway Walls/Pavers
+ASHCG,Ashford Paver  Colorado Grey ,EA,Bestway Walls/Pavers
+ASHGM,Ashford Paver  Grey Mix ,EA,Bestway Walls/Pavers
+ASHSM,Ashford Paver  Summer Mist ,EA,Bestway Walls/Pavers
+ARLCOPCG,Arlington Coping  Colorado Grey,EACH,Bestway Walls/Pavers
+ARLCOPNF,Arlington Coping  Nightfall,EACH,Bestway Walls/Pavers
+ARLCOPSM,Arlington Coping Summer Mist,EA,Bestway Walls/Pavers
+ARLCRNCG,Arlington Corner  Colorado Grey,EACH,Bestway Walls/Pavers
+ARLCRNNF,Arlington Corner  Nightfall,EACH,Bestway Walls/Pavers
+ARLCRNSM,Arlington Corner Summer Mist,EA,Bestway Walls/Pavers
+ARLREGCG,Arlington Regular  Colorado Grey,EACH,Bestway Walls/Pavers
+ARLREGNF,Arlington Regular  Nightfall,EACH,Bestway Walls/Pavers
+ARLREGSM,Arlington Retaining Wall Summer,EA,Bestway Walls/Pavers
+WHALDWC,WHITE ALUM DRIP CAP 12,EA,Aluminum
+WHALFA10,WHITE ALUM FASCIA 10,EA,Aluminum
+WHALFA4,WHITE ALUM FASCIA 4,EA,Aluminum
+WHALFA6,WHITE ALUM FASCIA 6,EA,Aluminum
+WHALFA8,WHITE ALUM FASCIA 8,EA,Aluminum
+WHALFL24,White Aluminum Flat Stock 24,LFT,Aluminum
+WHALJ34,WHT ALUM J TRIM 3/4X 12,EA,Aluminum
+WHALJ38,WHT ALUM J TRIM 3/8X 12,EA,Aluminum
+WHALL,WHITE ALUM L TRIM,EA,Aluminum
+WHALNA114,WHITE ALUM NAILS 1 1/4,PKG,Aluminum
+WHALOC34,WHT ALUM O/S CRNR 10,EA,Aluminum
+WHALSHST,WHITE ALUM ROOF EDGE 10 length,EA,Aluminum
+WHALSHST2,WHT ALUM ROOF EDGE 2x 10,EA,Aluminum
+WHALSOP,Soffit  Wht Alum  vented 2 Pnl,EA,Aluminum
+WHALSOSOL,PC WHT ALUM SOFFIT SOLID,EA,Aluminum
+WHALSOSOLP,PC WHT ALUM SOFFIT SOLID,EA,Aluminum
+WHALSTST,WHITE ALUM STARTER STRIP (FOR,EA,Aluminum
+WHALUS,White Aluminum Undersill 12,EA,Aluminum
+WHSOSC112,1 1/2WHITE SOFFIT SCREW,EA,Aluminum
+BLALDWCLG,BLACK LOW GLOSS ALUM DRIP CAP,EA,Aluminum
+BLALFA6LG,BLACK LOW GLOSS ALUM FASCIA 6,EA,Aluminum
+BLALFA8LG,BLACK LOW GLOSS ALUM.FASCIA 8,EA,Aluminum
+BLALFL24LG,Black Low Gloss Aluminum Flat,LFT,Aluminum
+BLALJ38,BLACK ALUM J TRIM 3/8X 12,EA,Aluminum
+BLALJ38LG,BLACK LOW GLOSS ALUM J TRIM,EA,Aluminum
+BLALSHSTLG,BLACK LOW GLOSS ALUM 3 shingle,EA,Aluminum
+BLALSOPLG,SOFFIT BLACK LOW GLOSS ALUM,EA,Aluminum
+ALDRIP,ALUMINUM DRIP EDGE REVERSIBLE,EA,Aluminum
+BRALDWC,Alum Drip Cap 12  Choc SG,EA,Aluminum
+BRALDWCLG,Choc Brown Alum Drip Cap 12 LG,EA,Aluminum
+BRALFA4,Choc Brown Alum Fascia 4x10,EA,Aluminum
+BRALFA4LG,Choc Brown Alum Fascia 4x10 LG,EA,Aluminum
+BRALFA6,Alum Fascia 6x10  Choc SG,EA,Aluminum
+BRALFA6LG,Choc Brown Alum Fascia 6x10 LG,EA,Aluminum
+BRALFA8,Alum Fascia 8  Choc SG,EA,Aluminum
+BRALFA8LG,Choc Brown Alum Fascia 8x10 LG,EA,Aluminum
+BRALFL24,Alum Flatstock 24  Choc SG,LFT,Aluminum
+BRALFL24LG,Choc Brown Alum Flatstock 24 LG,ROL,Aluminum
+BRALJ12,Alum J-trim 3/8x12  Choc SG,EA,Aluminum
+BRALJ38LG,Choc Brown Alum J-Trim 3/8x12,EA,Aluminum
+BRALNA114,PKG BRN ALUM NAILS 1 1/4- CHOC,EA,Aluminum
+BRALSHST,USE BRALSHSTLG - Alum Roof Edge,EA,Aluminum
+BRALSHSTLG,Choc Brown Alum Roof Edge 10 LG,EA,Aluminum
+BRALSOP,Alum soffit  Perf  Choc Brn SG,EA,Aluminum
+BRALSOPLG,Choc Brown Alum Soffit  Perf LG,EA,Aluminum
+BRALUS,Alum Undersill  Choc Brn SG,EA,Aluminum
+CBALDWC,COMM BRN ALUM DRIP CAP 12,EA,Aluminum
+CBALFA6,COMM BROWN ALUM FASCIA 6X10,EA,Aluminum
+CBALFA8,COMM.BROWN ALUM FASCIA 8,EA,Aluminum
+CBALFL24,Comm. Brown Aluminum Flatstk 24,LFT,Aluminum
+CBALJ38,COMM BRN ALUM J TRIM 3/8,EA,Aluminum
+CBALSHST,COMM BRN ALUM SHNGL START  ,EA,Aluminum
+CBALSOP,COMM.BRN ALUM SOFFIT PERF,EA,Aluminum
+CHALDWC,CHARCOAL ALUM DRIP CAP 12,EA,Aluminum
+CHALFA6,CHARCOAL ALUM FASCIA 6,EA,Aluminum
+CHALFA8,CHARCOAL ALUM FASCIA 8,EA,Aluminum
+CHALFL24,Charcoal Aluminum Flatstock 24,LFT,Aluminum
+CHALJ38,CHARCOAL ALUM J TRIM 3/8x12,EA,Aluminum
+CHALNA114,CHARCOAL ALUM NAIL 1 1/4 250G,PKG,Aluminum
+CHALSHST,CHARCOAL ALUM ROOF EDGE 2 x10,EA,Aluminum
+CHALSOP,SOFFIT  CHARCOAL  ALUM VENTD   ,EA,Aluminum
+CTALNA114,CACTUS ALUM NAILS 1 1/4 250G OR,PKG,Aluminum
+CTALSHST,CACTUS ALUM ROOF EDGE 10 3,EA,Aluminum
+CTSOSC,CACTUS SOFFIT SCRS 100/BOX,BOX,Aluminum
+FGALFA6,FOREST GRN ALUM FASCIA 6,EA,Aluminum
+FGALFA8,FOREST GRN ALUM FASCIA 8,EA,Aluminum
+FGALFL24,Forest Green Alum Flatstock 24,LFT,Aluminum
+FGALJ38,FOREST GRN ALUM J TRM 3/8,EA,Aluminum
+FGALNA114S,Forest Green Alum Nails 1-1/4,PKG,Aluminum
+FGALSHST,FOREST GRN ALUM SHNGLE STARTER,EA,Aluminum
+FGALSOP,FOREST GRN ALUM PERF. SOFFIT ,EA,Aluminum
+FGSOSC,(100 PC BAG) FOR GRN SOFFIT,BAG,Aluminum
+KHALFA6,KHAKI ALUM FASCIA 6,EA,Aluminum
+KHALFA8,KHAKI ALUM FASCIA 8,EA,Aluminum
+KHALFL24,Khaki Aluminum Flatstock 24,LFT,Aluminum
+KHALJ38,KHAKI ALUM J TRIM  3/8 12,EA,Aluminum
+KHALNA114,KHAKI ALUM NAILS 1 1/4 250G OR,PKG,Aluminum
+KHALSHST,KHAKI ALUM ROOF EDGE 10 2,EA,Aluminum
+KHALSOP,SOFFIT KHAKI ALUM VENTED 3 PANEL,EA,Aluminum
+SWALFA4,SANDALWOOD ALUM FASCIA 4,EA,Aluminum
+SWALFA6,SANDALWOOD ALUM FASCIA 6,EA,Aluminum
+SWALFA685,SNDLWD ALUM FASCIA 6 MATCHCOAT,EA,Aluminum
+SWALFA8,SANDALWOOD ALUM FASCIA 8,EA,Aluminum
+SWALFL2485,SNDLWD ALUM FLAT STK 24,LFT,Aluminum
+SWALJ38,SANDALWOOD ALUM JTRIM 3/8X12,EA,Aluminum
+SWALJ3885,SANDALWOOD ALUM JTRIM 3/8X12,EA,Aluminum
+SWALNA114,PKG SNWD ALUM NAIL 1 1/4,PKG,Aluminum
+SWALSHST,SANDALWOOD ALUM ROOF EDGE 10,EA,Aluminum
+SWALSHST85,SWD ALUM ROOF EDGE 10 MATCHCOAT,EA,Aluminum
+SWALSOP,SANDALWOOD ALUM SOFFIT  PERF,EA,Aluminum
+SWALSOP85,SANDALWOOD ALUM SOFFIT PERF,EA,Aluminum
+SWSOSC,100 PCS SNDLWD SOF SCRS,BAG,Aluminum
+BEALFL2475,Beige Aluminum Flat Stock 24,LFT,Aluminum
+FWSSTART,Fraser Wood Starter Strip,EA,Aluminum
+MOALFL24,Mocha Aluminum Flatstock 24,LFT,Aluminum
+SO ALUMINUM,Special Order Aluminum,EA,Aluminum
+VRALFL24,Venetian Red Alum. Flatstock 24,LFT,Aluminum
+RVENTD,Rafter Vent  22-1/2x44,EA,Ventilation
+RVENTDCA,Cardboard Vent-Insulation Stop,EA,Ventilation
+RVENTDCA-XL,XL Cardboard Vent-Insulation,EA,Ventilation
+VENT1216,VENT ALUMINUM  WHT 12x16,EA,Ventilation
+WMFCTRL,Westman TR Large Foam Closure,PC,Westman Steel Products
+WMFCTRS,Westman TR Small Foam Closure,PC,Westman Steel Products
+WMGB121,Westman Galv. Base Trim #121,LNG,Westman Steel Products
+WMGDE805,Westman Galv. Drip Edge #805,LNG,Westman Steel Products
+WMGEW603,Westman Galv. End Wall #603,LNG,Westman Steel Products
+WMGGD123,Westman Galv. Gable Div #123,LNG,Westman Steel Products
+WMGJ252,Westman Galv. J-trim #252,LNG,Westman Steel Products
+WMGRC579,Westman Galv. Ridge Cap #579,LNG,Westman Steel Products
+WMGRH584,Westman Galv. Ridge/Hip #584,LNG,Westman Steel Products
+WMGSC2,Westman Galv. Screws  2 (250),BAG,Westman Steel Products
+WMGSG450,Westman Galv SnowGuard #450,LNG,Westman Steel Products
+WMGTR,Westman Galvalume Tough Rib 28ga,LFT,Westman Steel Products
+WMGV24,Westman Galv. Valley 24 #891,LNG,Westman Steel Products
+WMPB121,Westman Painted Base trim #121,LNG,Westman Steel Products
+WMPDE805,Westman Painted Drip Edge #805,LNG,Westman Steel Products
+WMPEW603,Westman Painted End Wall #603,LNG,Westman Steel Products
+WMPGD123,Westman Painted Gable Div #123,LNG,Westman Steel Products
+WMPJ252,Westman Painted J-trim #252,LNG,Westman Steel Products
+WMPRC579,Westman Painted Ridge Cap #579,LNG,Westman Steel Products
+WMPRH584,Westman Painted Ridge/Hip #584,LNG,Westman Steel Products
+WMPSC2,Westman Painted Screws  2 (250),EA,Westman Steel Products
+WMPSG450,Westman Painted Snow Guard #450,LNG,Westman Steel Products
+WMPTR,Westman Painted Tough Rib  28ga,LFT,Westman Steel Products
+WMPV24,Westman Painted Valley 24 #891,LNG,Westman Steel Products
+WMSLSFC,Westman 16 snaplock small FC,EACH,Westman Steel Products
+WMSLVFC,Westman Snap Lock Vented Foam,EACH,Westman Steel Products
+WMUFC,Westman Universal Foam Closure,ROL,Westman Steel Products
+WMVFCTRL,Westman TR Vented Foam Closure,PC,Westman Steel Products
+112X100GA,Screws  Galv. Metal-Wood 1-1/2,BAG,Steel Roofing
+112X500GA,Screws  galv. Metal-Wood 1-1/2,BAG,Steel Roofing
+1X500GA,Screws  Galv. Metal-Wood 1,BAG,Steel Roofing
+1X500HHGA,Screws  Galv. 1 Hex Head,BAG,Steel Roofing
+1X500THGA,Screws  Galv. Truss Head  1,BAG,Steel Roofing
+212X500GA,Screws  Galv. Metal-Wood 2-1/2,BAG,Steel Roofing
+2X100GA,Screws  Galv. Metal-Wood 2 #10,BAG,Steel Roofing
+2X500#14,Screws  Galv. Metal-Wood #14x2,BAG,Steel Roofing
+2X500GA,Screws  Galv. Metal-Wood 2 #10,BAG,Steel Roofing
+FCES,Closure  Expandable Valley Seal,EA,Steel Roofing
+FCSEA,Closure  Foam  Americana Eave,LFT,Steel Roofing
+FCSEC,Closure  Foam  Canadiana Eave,LFT,Steel Roofing
+FCSED,Closure  Foam  Diamond Rib Eave,LFT,Steel Roofing
+FCSEL,Closure  Foam  Laurentian Eave,LFT,Steel Roofing
+FCSEO,Closure  Foam  Corrugated,LFT,Steel Roofing
+FCSEP,Closure  Foam  Pocket Eave,LFT,Steel Roofing
+FCSES,Closure  Foam  Security Eave,LFT,Steel Roofing
+FCSRA,Closure  Foam  Americana Ridge,LFT,Steel Roofing
+FCSRC,Closure  Foam  Canadiana Ridge,LFT,Steel Roofing
+FCSRD,Closure  Foam  Diamond Rib Ridge,LFT,Steel Roofing
+FCSRL,Closure  Foam  Laurentian Ridge,LFT,Steel Roofing
+FCSRP,Closure  Foam  Pocket Ridge,LFT,Steel Roofing
+FCSRS,Closure  Foam  Security Ridge,LFT,Steel Roofing
+FCSU,Closure  Foam  7/8x7/8,LFT,Steel Roofing
+GA3626,Steel Roofing  Galvanized 26ga,LFT,Steel Roofing
+GA3628,Steel Roofing  galvanized 28ga,LFT,Steel Roofing
+GA3630,Steel Roofing  Galvanized 30ga,LFT,Steel Roofing
+GA4129,Steel Roofing  Galvalume 29ga,LFT,Steel Roofing
+2X100CO,Screws  2 Painted  Metal-Wood,BAG,Steel Roofing
+2X500CO,Screws  #10x2Painted Metal-Wood,BAG,Steel Roofing
+VIST,Trim  Vnl  Starter Strip 12',EA,Vinyl Siding
+WHAD4,Siding  Vnl  White D4 ,PC,Vinyl Siding
+WHBB,Siding  Vnl  White B&B Vertical,EA,Vinyl Siding
+WHBL,Trim  Vnl  White Beltline 12',EA,Vinyl Siding
+WHCD4,Siding  Vnl  White D4 Concorde,PC,Vinyl Siding
+WHCD5,Siding  Vnl  White D5 Concorde,PC,Vinyl Siding
+WHDRVE,WHITE DRYER VENT [A 830],EA,Vinyl Siding
+WHDWC,Trim  Vnl  White Dripcap 12',EA,Vinyl Siding
+WHHO8,Siding Vnl  White 8  Horizontal ,EA,Vinyl Siding
+WHIC34,Trim  Vnl  White I/S Corner,EA,Vinyl Siding
+WHJ58,Trim  Vnl  White J-trim 5/8 x12',EA,Vinyl Siding
+WHJ58D212,TRIM VNLJ 5/8  WHITE 2 1/2 DELUXE,EA,Vinyl Siding
+WHOC34,Trim  Vnl  White O/S Corner,EA,Vinyl Siding
+WHOC34D20,TRIM VNLO/C 3/4 DELX WHT X 20'0 ,EA,Vinyl Siding
+WHOV,Siding  Vnl  White Vertical 10 ,PC,Vinyl Siding
+WHRD45,Siding  Vnl  White D4.5 Revere,PC,Vinyl Siding
+WHRECBL,WHITE RECEPTACLE BLOCK,EA,Vinyl Siding
+WHTD4,Siding  Vnl  White D4 Timberclad,PC,Vinyl Siding
+WHTD5,Siding  Vnl  White D5 Timberclad,PC,Vinyl Siding
+WHUNIBL,WHITE UNIV. BLK (LIGHTS),EA,Vinyl Siding
+WHUS,Trim  Vnl  White Undersill 12',EA,Vinyl Siding
+WHVIJ12,Trim  Vnl  White 1/2  J-Trim 12',EA,Vinyl Siding
+WHVISOB,Soffit  Vnl  Beaded White 8 ,EA,Vinyl Siding
+KHBB,Siding  Vnl  Khaki B&B Vertical,EA,Vinyl Siding
+KHD5V,Siding  Vnl  Khaki D5 Vertical,EA,Vinyl Siding
+KHDWC,Trim  Vnl  Khaki Drip Cap 12',EA,Vinyl Siding
+KHIC34,Trim  Vnl  khaki I/S Corner ,EA,Vinyl Siding
+KHJ58,Siding Vnl  Khaki J-trim,EA,Vinyl Siding
+KHOC34,Trim  Vnl  Khaki O/S Corner,EA,Vinyl Siding
+KHPD45,Siding  Vnl  Khaki D4.5 Prova,PC,Vinyl Siding
+KHUS,Trim  Vnl  Khaki Undersill 12',EA,Vinyl Siding
+CANRD5,Canexel Ridgewood D5  Classic ,EA,Manufactured Siding
+CANRD5IN,Canexel Ridgewood D5 Inspiration,EA,Manufactured Siding
+CANRD5NA,Canexel Ridgewood D5 Nature,EA,Manufactured Siding
+CANCDRVU6NA,Canexel Ced-R-Vue 6  Snap,PKG,Manufactured Siding
+CANCDRVU9,Canexel Ced-R-Vue 9  Classic,EA,Manufactured Siding
+CANCDRVU9IN,Canexel Ced-R-Vue 9  Inspiration,EA,Manufactured Siding
+CANCDRVU9NA,Canexel Ced-R-vue 9  Nature,EA,Manufactured Siding
+CANBELT,Canexel Beltline  10' Alum Trim,EA,Manufactured Siding
+CANCAULK,Canexel Caulking  300ml,EA,Manufactured Siding
+CANDC,Canexel Drip Cap  10' Alum Trim,EA,Manufactured Siding
+CANIS,Canexel I/S Corner  10' Alum,EA,Manufactured Siding
+CANJ1,Canexel  J  Trim 1 x10' Alum,EA,Manufactured Siding
+CANJ12,Canexel  J  Trim  1/2 x10' Alum,EA,Manufactured Siding
+CANJT,Canexel Joint Moulding  Alum,EA,Manufactured Siding
+CANNAIL,Canexel Nails  2 Lb Pkg,EA,Manufactured Siding
+CANOS1,Canexel O/S Corner 1 x10' Alum,EA,Manufactured Siding
+CANOS12,Canexel O/S Corner 1/2 x10' alum,EA,Manufactured Siding
+CANOST,Canexel Starter Strip  10',EA,Manufactured Siding
+CANTU,Canexel Touch Up Paint 284ml,EA,Manufactured Siding
+CANVLS,Maibec Universal Vented  L ,EA,Manufactured Siding
+CANVST,Canexel Vented Starter Strip ,EA,Manufactured Siding
+CANWVM,Canexel Wall Vent Mldg 1 x10',EA,Manufactured Siding
+CANBATCLAS,CanExel Batten for B&B Classic,EA,Manufactured Siding
+CANBATINSP,CanExel Batten for B&B,EA,Manufactured Siding
+CANBATNATURE,CanExel Batten for B&B NAture,EA,Manufactured Siding
+CANBOCLASS,CanExel Board for B&B classic ,EA,Manufactured Siding
+CANBOINSP,CanExel Board for B&B,EA,Manufactured Siding
+CANBONATUR,CanExel Board for B&B Nature,EA,Manufactured Siding
+GECKO,Gecko Gauge SA903 for Hardie,PKG,Manufactured Siding
+GECKOLP,Gecko Gauge for LP Siding,PKG,Manufactured Siding
+SO HARDIE,Special Order Hardie,EA,Manufactured Siding
+SO MFGD SIDING,Special Order Manufact'd Siding,EA,Manufactured Siding
