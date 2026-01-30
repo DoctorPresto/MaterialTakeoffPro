@@ -27,10 +27,10 @@ const App = () => {
                                 className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'measure' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>Measurements
                         </button>
                         <button onClick={() => setActiveTab('materials')}
-                                className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'materials' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>Materials
+                                className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'materials' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>Material List
                         </button>
                         <button onClick={() => setActiveTab('setup')}
-                                className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'setup' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>Database
+                                className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'setup' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>DB Setup
                         </button>
                     </div>
                 </div>
