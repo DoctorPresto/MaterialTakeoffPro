@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-// FIX: Import worker directly from node_modules using Vite's ?url suffix
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -50,7 +49,8 @@ const Canvas = () => {
     // Double Click Detection State
     const [lastClickTime, setLastClickTime] = useState(0);
     const [lastClickId, setLastClickId] = useState<string | null>(null);
-    const [lastClickIndex, setLastClickIndex] = useState<number | null>(null);
+    const [lastClickIndex, setLastClickIndex] = useState<number | null>(null); // For graph, this acts as 'sourceIndex'
+    const [lastClickTarget, setLastClickTarget] = useState<number | null>(null); // For graph edges, we need target index too
 
     // UI State
     const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
@@ -152,11 +152,6 @@ const Canvas = () => {
             return;
         }
 
-        // Logic for removing a node in the graph:
-        // 1. Remove the point from array
-        // 2. Shift all references > pIdx down by 1
-        // 3. Remove any connections pointing TO pIdx
-
         const newPoints = m.points
             .filter((_, idx) => idx !== pIdx) // Remove the point
             .map(p => {
@@ -167,6 +162,27 @@ const Canvas = () => {
             });
 
         updateMeasurement(mId, { points: newPoints });
+    };
+
+    const handleGraphSplitEdge = (mId: string, sourceIdx: number, targetIdx: number, clickPoint: Point) => {
+        const m = measurements.find(meas => meas.id === mId);
+        if (!m) return;
+
+        // 1. Create new point, append to end
+        const newPointIdx = m.points.length;
+        // The new point connects to the old target
+        const newPoint: Point = { ...clickPoint, connectsTo: [targetIdx] };
+
+        // 2. Update source point to connect to new point instead of old target
+        const updatedPoints = [...m.points, newPoint];
+        const sourcePoint = updatedPoints[sourceIdx];
+
+        updatedPoints[sourceIdx] = {
+            ...sourcePoint,
+            connectsTo: (sourcePoint.connectsTo || []).map(idx => idx === targetIdx ? newPointIdx : idx)
+        };
+
+        updateMeasurement(mId, { points: updatedPoints });
     };
 
     const screenToPdf = (screenX: number, screenY: number) => {
@@ -219,8 +235,6 @@ const Canvas = () => {
 
     const handleBranchFromPoint = (mId: string, pIdx: number) => {
         setBranchingFrom({ id: mId, pIdx });
-        // We do NOT set tool to 'line' or clear points.
-        // We stay in 'select' mode but utilize the click handler to inject points.
     };
 
     const handleMouseDown = (e: React.MouseEvent) => {
@@ -234,7 +248,7 @@ const Canvas = () => {
         if (e.button === 0 && !contextMenu && !draggedVertex && !edgeContextMenu) {
             const { x, y } = screenToPdf(e.clientX, e.clientY);
 
-            // HANDLE BRANCHING CLICK
+            // Branching Clicks
             if (branchingFrom) {
                 const m = measurements.find(meas => meas.id === branchingFrom.id);
                 if (m) {
@@ -354,8 +368,19 @@ const Canvas = () => {
         if (draggedVertex) {
             const m = measurements.find(m => m.id === draggedVertex.mId);
             if (m) {
+                // Drag Logic
+                const sourcePoint = m.points[draggedVertex.pIdx];
+                const coincidentIndices = m.points.map((p, i) =>
+                    (Math.abs(p.x - sourcePoint.x) < 0.01 && Math.abs(p.y - sourcePoint.y) < 0.01) ? i : -1
+                ).filter(i => i !== -1);
+
+                const indicesToUpdate = coincidentIndices.length > 0 ? coincidentIndices : [draggedVertex.pIdx];
+
                 const newPoints = [...m.points];
-                newPoints[draggedVertex.pIdx] = { ...newPoints[draggedVertex.pIdx], x, y };
+                indicesToUpdate.forEach(i => {
+                    newPoints[i] = { ...newPoints[i], x, y };
+                });
+
                 updateMeasurement(m.id, { points: newPoints });
             }
             return;
@@ -439,39 +464,53 @@ const Canvas = () => {
         setContextMenu({ x: e.clientX, y: e.clientY, mId, pIdx });
     };
 
-    const handleEdgeMouseDown = (e: React.MouseEvent, mId: string, idx: number) => {
+    const handleEdgeMouseDown = (e: React.MouseEvent, mId: string, sourceIdx: number, targetIdx?: number) => {
         e.preventDefault();
         e.stopPropagation();
-        // Graph edge selection is complex, for now we disable split-on-click for graph lines to keep it manageable
-        // Or we implement basic splitting if needed, but 'insertPointAfter' needs graph awareness.
-        // For simplicity, we fallback to standard behavior but check connectivity logic would need updates.
-        // Assuming simple behavior for now:
+
         const now = Date.now();
-        if (lastClickId === mId && lastClickIndex === idx && now - lastClickTime < 300) {
-            // Double click behavior - maybe disabled for graph lines for now to ensure stability
+        // Check double click. If targetIdx is provided, check that too (for graph edges)
+        const sameTarget = targetIdx !== undefined ? lastClickTarget === targetIdx : true;
+
+        if (lastClickId === mId && lastClickIndex === sourceIdx && sameTarget && now - lastClickTime < 300) {
+            const clickPoint = screenToPdf(e.clientX, e.clientY);
+
+            if (targetIdx !== undefined) {
+                // Graph Split
+                handleGraphSplitEdge(mId, sourceIdx, targetIdx, clickPoint);
+            } else {
+                // Standard Split (Linear)
+                insertPointAfter(mId, sourceIdx, clickPoint);
+            }
+
+            setLastClickTime(0);
+            setLastClickId(null);
+            setLastClickTarget(null);
         } else {
             setLastClickTime(now);
             setLastClickId(mId);
-            setLastClickIndex(idx);
+            setLastClickIndex(sourceIdx);
+            setLastClickTarget(targetIdx !== undefined ? targetIdx : null);
         }
     };
 
-    const handleEdgeRightClick = (e: React.MouseEvent, mId: string, edgeIndex: number) => {
+    const handleEdgeRightClick = (e: React.MouseEvent, mId: string, sourceIdx: number, targetIdx?: number) => {
         e.preventDefault();
         e.stopPropagation();
-        // Graph edges are drawn per connection. edgeIndex here is ambiguous in a graph.
-        // For now, suppress context menu on edges if graph to avoid index confusion.
-        const m = measurements.find(me => me.id === mId);
-        const isGraph = m?.points.some(p => p.connectsTo && p.connectsTo.length > 0);
 
-        if (!isGraph) {
-            const clickPoint = screenToPdf(e.clientX, e.clientY);
-            setEdgeContextMenu({
-                x: e.clientX,
-                y: e.clientY,
-                onAddVertex: () => insertPointAfter(mId, edgeIndex, clickPoint)
-            });
-        }
+        const clickPoint = screenToPdf(e.clientX, e.clientY);
+
+        setEdgeContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            onAddVertex: () => {
+                if (targetIdx !== undefined) {
+                    handleGraphSplitEdge(mId, sourceIdx, targetIdx, clickPoint);
+                } else {
+                    insertPointAfter(mId, sourceIdx, clickPoint);
+                }
+            }
+        });
     };
 
     const handleRemovePage = (pageIndex: number) => {
@@ -859,7 +898,30 @@ const Canvas = () => {
                                                         }}
                                                     />
 
-                                                    {/* If it's a legacy linear line, draw edge handles. If Graph, skip for now. */}
+                                                    {/* Render Edge Handles for Graph Lines */}
+                                                    {isGraph && m.points.map((p, sourceIdx) => {
+                                                        if (!p.connectsTo) return null;
+                                                        return p.connectsTo.map(targetIdx => {
+                                                            const targetP = m.points[targetIdx];
+                                                            if (!targetP) return null;
+                                                            return (
+                                                                <line
+                                                                    key={`edge-${sourceIdx}-${targetIdx}`}
+                                                                    x1={p.x} y1={p.y}
+                                                                    x2={targetP.x} y2={targetP.y}
+                                                                    stroke="transparent"
+                                                                    strokeWidth={Math.max(8, 12 / zoom)}
+                                                                    className="cursor-pointer"
+                                                                    onMouseDown={(e) => handleEdgeMouseDown(e, m.id, sourceIdx, targetIdx)}
+                                                                    onContextMenu={(e) => handleEdgeRightClick(e, m.id, sourceIdx, targetIdx)}
+                                                                    vectorEffect="non-scaling-stroke"
+                                                                    style={{ pointerEvents: 'all' }}
+                                                                />
+                                                            );
+                                                        });
+                                                    })}
+
+                                                    {/* Legacy Linear Handles */}
                                                     {!isGraph && m.points.map((p, idx) => {
                                                         if (idx === m.points.length - 1) return null;
                                                         const nextP = m.points[idx + 1];
