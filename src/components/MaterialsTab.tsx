@@ -8,7 +8,7 @@ const MaterialsTab = () => {
     const bom = generateGlobalBOM(itemSets, assemblyDefs, measurements, materials, scale);
 
     const handleExportCSV = () => {
-        const headers = ["Item Set", "SKU", "Name", "Quantity", "UOM"];
+        const headers = ["Item Set", "SKU", "Description", "Quantity", "UOM"];
         const rows = bom.map(l => [l.sourceItemSet, l.sku, l.name, l.quantity, l.uom]);
         const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
         const encodedUri = encodeURI(csvContent);
@@ -27,7 +27,7 @@ const MaterialsTab = () => {
                     <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Materials</span>
                     <button onClick={handleExportCSV}
                             className="flex items-center gap-2 bg-green-50 text-green-700 px-3 py-1.5 rounded text-sm hover:bg-green-100 border border-green-200 font-medium">
-                        <Download size={16}/> Export Excel
+                        <Download size={16}/> Export For Spruce
                     </button>
                 </div>
                 <div className="flex-1 overflow-auto p-4 w-full">

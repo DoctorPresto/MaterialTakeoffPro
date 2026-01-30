@@ -1,4 +1,8 @@
-export type Point = { x: number; y: number };
+export type Point = {
+    x: number;
+    y: number;
+    connectsTo?: number[]; // Indices of points this point connects to
+};
 
 export type MeasurementType = 'line' | 'shape';
 
@@ -38,6 +42,9 @@ export interface AssemblyNode {
     formula: string;
     round: 'up' | 'down' | 'nearest' | 'none';
     variableMapping?: Record<string, string>;
+    isDynamic?: boolean;
+    variantIds?: string[];
+    defaultVariantId?: string;
 }
 
 export interface AssemblyDef {
@@ -58,6 +65,7 @@ export interface ProjectAssembly {
     assemblyDefId: string;
     name: string;
     variableValues: Record<string, VariableSource>;
+    selections?: Record<string, string>;
 }
 
 export interface ItemSet {
@@ -104,9 +112,11 @@ export interface EstimateFile {
         projectInfo: ProjectInfo;
         buildingData: BuildingData;
         scale: number;
+        pageScales?: Record<number, number>;
         measurements: Measurement[];
         itemSets: ItemSet[];
         pdfBase64: string | null;
+        groupColors?: Record<string, string>;
     };
 }
 

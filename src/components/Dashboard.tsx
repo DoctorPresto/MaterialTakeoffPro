@@ -2,7 +2,7 @@ import React, {useEffect, useState} from 'react';
 import {useStore} from '../store';
 import {Clock, FilePlus, FolderOpen} from 'lucide-react';
 
-// --- New Project Modal ---
+//  New Project Modal
 const NewProjectModal = ({
                              isOpen, onClose, onCreate
                          }: { isOpen: boolean, onClose: () => void, onCreate: (name: string) => void }) => {

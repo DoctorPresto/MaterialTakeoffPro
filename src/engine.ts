@@ -1,13 +1,14 @@
 import {AssemblyDef, BomLine, ItemSet, MaterialDef, Measurement, ProjectAssembly, VariableSource} from './types';
 import {applyRounding, evaluateFormula, getPathLength, getPolygonArea} from './utils/math';
 
+// UPDATED: resolveValue now takes pageScales
 const resolveValue = (
     source: VariableSource,
     measurements: Measurement[],
-    globalScale: number
+    globalScale: number,
+    pageScales: Record<number, number> = {} // New parameter
 ): number => {
     if (source.type === 'manual') {
-        // Handle pitch values (e.g., "5/12")
         if (typeof source.value === 'string') {
             const parts = source.value.split('/');
             if (parts.length === 2) {
@@ -17,28 +18,35 @@ const resolveValue = (
                     return rise / run;
                 }
             }
-            // If string but not a valid pitch format, try to parse as number
             const parsed = parseFloat(source.value);
             return isNaN(parsed) ? 0 : parsed;
         }
         return source.value;
     }
 
+    // Helper to get correct scale for a measurement
+    const getScale = (m: Measurement) => {
+        // If the page has a specific scale, use it. Otherwise use global.
+        return pageScales[m.pageIndex] || globalScale;
+    };
+
     if (source.type === 'measurement') {
         const m = measurements.find(meas => meas.id === source.measurementId);
         if (!m) return 0;
 
+        const effectiveScale = getScale(m); // Use helper
+
         if (source.property === 'count') return m.points.length;
 
         if (m.type === 'shape') {
-            if (source.property === 'area') return getPolygonArea(m.points) / (globalScale * globalScale);
+            if (source.property === 'area') return getPolygonArea(m.points) / (effectiveScale * effectiveScale);
             if (source.property === 'length') {
-                return getPathLength([...m.points, m.points[0]]) / globalScale;
+                return getPathLength([...m.points, m.points[0]]) / effectiveScale;
             }
         }
 
         if (m.type === 'line') {
-            if (source.property === 'length') return getPathLength(m.points) / globalScale;
+            if (source.property === 'length') return getPathLength(m.points) / effectiveScale;
         }
     }
 
@@ -47,30 +55,30 @@ const resolveValue = (
         if (groupMeasurements.length === 0) return 0;
 
         if (source.property === 'length') {
-            // Sum perimeters of shapes + lengths of lines
             let totalLength = 0;
             groupMeasurements.forEach(m => {
+                const effectiveScale = getScale(m); // Resolve scale PER measurement
                 if (m.type === 'shape') {
-                    totalLength += getPathLength([...m.points, m.points[0]]);
+                    totalLength += getPathLength([...m.points, m.points[0]]) / effectiveScale;
                 } else if (m.type === 'line') {
-                    totalLength += getPathLength(m.points);
+                    totalLength += getPathLength(m.points) / effectiveScale;
                 }
             });
-            return totalLength / globalScale;
+            return totalLength; // Already scaled
         }
         if (source.property === 'count') {
             return groupMeasurements.reduce((sum, m) => sum + m.points.length, 0);
         }
 
         if (source.property === 'area') {
-            // Sum areas of all shapes
             let totalArea = 0;
             groupMeasurements.forEach(m => {
+                const effectiveScale = getScale(m); // Resolve scale PER measurement
                 if (m.type === 'shape') {
-                    totalArea += getPolygonArea(m.points);
+                    totalArea += getPolygonArea(m.points) / (effectiveScale * effectiveScale);
                 }
             });
-            return totalArea / (globalScale * globalScale);
+            return totalArea; // Already scaled
         }
     }
 
@@ -83,52 +91,61 @@ const processNodes = (
     allDefs: AssemblyDef[],
     materials: MaterialDef[],
     itemSetName: string,
+    selections: Record<string, string> = {},
     breadcrumbs: string[] = []
 ): BomLine[] => {
     let results: BomLine[] = [];
-    const currentPath = [...breadcrumbs, currentDef.name];
-
-    const materialNodes = currentDef.children.filter(n => n.childType === 'material');
-    const assemblyNodes = currentDef.children.filter(n => n.childType === 'assembly');
-
     const enhancedContext = {...context};
 
-    for (const node of materialNodes) {
-        const quantity = applyRounding(
-            evaluateFormula(node.formula, enhancedContext),
-            node.round
-        );
+    for (const node of currentDef.children) {
+        if (node.childType === 'material') {
+            const quantity = applyRounding(
+                evaluateFormula(node.formula, enhancedContext),
+                node.round
+            );
 
-        if (quantity > 0) {
-            const mat = materials.find(m => m.id === node.childId);
-            if (mat) {
-                const materialName = node.alias || mat.name;
-                results.push({
-                    sku: mat.sku,
-                    name: materialName,
-                    quantity,
-                    uom: mat.uom,
-                    sourceItemSet: itemSetName
+            if (quantity > 0) {
+                let targetMaterialId = node.childId;
+                if (node.isDynamic) {
+                    if (selections[node.id]) {
+                        targetMaterialId = selections[node.id];
+                    } else if (node.defaultVariantId) {
+                        targetMaterialId = node.defaultVariantId;
+                    }
+                }
+
+                const mat = materials.find(m => m.id === targetMaterialId);
+                if (mat) {
+                    const materialName = node.alias || mat.name;
+
+                    results.push({
+                        sku: mat.sku,
+                        name: materialName,
+                        quantity,
+                        uom: mat.uom,
+                        sourceItemSet: itemSetName
+                    });
+
+                    enhancedContext[materialName] = quantity;
+                    enhancedContext[mat.sku] = quantity;
+                    if (node.alias) enhancedContext[node.alias] = quantity;
+                }
+            }
+        } else if (node.childType === 'assembly') {
+            const childDef = allDefs.find(a => a.id === node.childId);
+            if (childDef && node.variableMapping) {
+                const childContext: Record<string, number> = {};
+                Object.entries(node.variableMapping).forEach(([childVarName, parentVarName]) => {
+                    if (enhancedContext[parentVarName] !== undefined) {
+                        childContext[childVarName] = enhancedContext[parentVarName];
+                    }
                 });
 
-                enhancedContext[materialName] = quantity;
+                results = [
+                    ...results,
+                    ...processNodes(childDef, childContext, allDefs, materials, itemSetName, {}, [...breadcrumbs, currentDef.name])
+                ];
             }
-        }
-    }
-
-    for (const node of assemblyNodes) {
-        const childDef = allDefs.find(a => a.id === node.childId);
-        if (childDef && node.variableMapping) {
-            const childContext: Record<string, number> = {};
-            Object.entries(node.variableMapping).forEach(([childVarName, parentVarName]) => {
-                if (enhancedContext[parentVarName] !== undefined) {
-                    childContext[childVarName] = enhancedContext[parentVarName];
-                }
-            });
-            results = [
-                ...results,
-                ...processNodes(childDef, childContext, allDefs, materials, itemSetName, currentPath)
-            ];
         }
     }
 
@@ -141,18 +158,20 @@ export const generateBOM = (
     measurements: Measurement[],
     materials: MaterialDef[],
     scale: number,
-    itemSetName: string = "Unknown Set"
+    itemSetName: string = "Unknown Set",
+    pageScales: Record<number, number> = {} // New parameter
 ): BomLine[] => {
     const def = allDefs.find(a => a.id === instance.assemblyDefId);
     if (!def) return [];
 
     const context: Record<string, number> = {};
     def.variables.forEach(v => {
-        const val = resolveValue(instance.variableValues[v.id], measurements, scale);
+        // Pass pageScales to resolveValue
+        const val = resolveValue(instance.variableValues[v.id], measurements, scale, pageScales);
         context[v.name] = val;
     });
 
-    return processNodes(def, context, allDefs, materials, itemSetName);
+    return processNodes(def, context, allDefs, materials, itemSetName, instance.selections || {});
 };
 
 export const generateGlobalBOM = (
@@ -160,13 +179,15 @@ export const generateGlobalBOM = (
     allDefs: AssemblyDef[],
     measurements: Measurement[],
     materials: MaterialDef[],
-    scale: number
+    scale: number,
+    pageScales: Record<number, number> = {} // New parameter
 ): BomLine[] => {
     let fullBOM: BomLine[] = [];
 
     itemSets.forEach(set => {
         set.assemblies.forEach(instance => {
-            const lines = generateBOM(instance, allDefs, measurements, materials, scale, set.name);
+            // Pass pageScales
+            const lines = generateBOM(instance, allDefs, measurements, materials, scale, set.name, pageScales);
             fullBOM = [...fullBOM, ...lines];
         });
     });

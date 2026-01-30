@@ -31,7 +31,6 @@ const generateUniqueName = (baseName: string, existingNames: string[]): string =
     return uniqueName;
 };
 
-// --- History Interfaces ---
 interface HistoryState {
     materials: MaterialDef[];
     assemblyDefs: AssemblyDef[];
@@ -39,6 +38,8 @@ interface HistoryState {
     buildingData: BuildingData;
     measurements: Measurement[];
     itemSets: ItemSet[];
+    groupColors: Record<string, string>;
+    pageScales: Record<number, number>; // Added
 }
 
 interface AppState {
@@ -58,6 +59,7 @@ interface AppState {
     pdfFile: string | null;
     lastModified: number;
     scale: number;
+    pageScales: Record<number, number>; // Added: Map pageIndex -> Scale
     activePageIndex: number;
     activeTool: 'select' | 'line' | 'shape' | 'measure';
     activeWizardTool: string | null;
@@ -67,6 +69,8 @@ interface AppState {
     pan: { x: number; y: number };
     measurements: Measurement[];
     itemSets: ItemSet[];
+    favoriteItemSets: ItemSet[];
+    groupColors: Record<string, string>;
 
     createEstimate: () => void;
     closeEstimate: () => void;
@@ -77,6 +81,7 @@ interface AppState {
     updateProjectInfo: (updates: Partial<ProjectInfo>) => void;
     updateBuildingData: (updates: Partial<BuildingData>) => void;
     setScale: (s: number) => void;
+    setPageScale: (pageIndex: number, scale: number | undefined) => void; // NEW
     setPageIndex: (index: number) => void;
     setTool: (t: 'select' | 'line' | 'shape' | 'measure') => void;
     setWizardTool: (tag: string | null) => void;
@@ -88,6 +93,7 @@ interface AppState {
     updateMeasurement: (id: string, updates: Partial<Measurement>) => void;
     deleteMeasurement: (id: string) => void;
     setMeasurements: (measurements: Measurement[]) => void;
+    setGroupColor: (group: string, color: string) => void;
     deletePoint: (measurementId: string, pointIndex: number) => void;
     insertPointAfter: (measurementId: string, pointIndex: number, clickPoint?: Point) => void;
 
@@ -108,14 +114,22 @@ interface AppState {
     addNodeToDef: (defId: string, node: Omit<AssemblyNode, 'id'>) => void;
     updateNodeInDef: (defId: string, nodeId: string, updates: Partial<AssemblyNode>) => void;
     removeNodeFromDef: (defId: string, nodeId: string) => void;
+    reorderNodeInDef: (defId: string, nodeId: string, direction: 'up' | 'down') => void;
 
     addItemSet: (name: string) => void;
+    renameItemSet: (id: string, newName: string) => void;
     setItemSets: (itemSets: ItemSet[]) => void;
     updateItemSet: (id: string, updates: Partial<ItemSet>) => void;
     deleteItemSet: (id: string) => void;
+
+    saveItemSetAsFavorite: (id: string, name: string) => void;
+    addItemSetFromFavorite: (favoriteId: string) => void;
+    deleteFavoriteItemSet: (favoriteId: string) => void;
+
     addInstanceToSet: (setId: string, defId: string) => void;
     deleteInstanceFromSet: (setId: string, instanceId: string) => void;
     updateInstanceVariable: (setId: string, instanceId: string, varId: string, source: VariableSource) => void;
+    updateInstanceSelection: (setId: string, instanceId: string, nodeId: string, selectionId: string) => void;
 }
 
 export const useStore = create<AppState>()(
@@ -142,6 +156,7 @@ export const useStore = create<AppState>()(
                 valleyLength: 0
             },
             scale: 1,
+            pageScales: {}, // Init
             activePageIndex: 0,
             activeTool: 'select',
             activeWizardTool: null,
@@ -151,6 +166,8 @@ export const useStore = create<AppState>()(
             pan: {x: 0, y: 0},
             measurements: [],
             itemSets: [],
+            favoriteItemSets: [],
+            groupColors: {},
 
             saveHistory: () => set((state) => {
                 const current: HistoryState = {
@@ -159,7 +176,9 @@ export const useStore = create<AppState>()(
                     projectInfo: state.projectInfo,
                     buildingData: state.buildingData,
                     measurements: state.measurements,
-                    itemSets: state.itemSets
+                    itemSets: state.itemSets,
+                    groupColors: state.groupColors,
+                    pageScales: state.pageScales // Save page scales
                 };
                 const newPast = [...state.past, current].slice(-50);
                 return { past: newPast, future: [] };
@@ -169,16 +188,16 @@ export const useStore = create<AppState>()(
                 if (state.past.length === 0) return state;
                 const previous = state.past[state.past.length - 1];
                 const newPast = state.past.slice(0, -1);
-
                 const current: HistoryState = {
                     materials: state.materials,
                     assemblyDefs: state.assemblyDefs,
                     projectInfo: state.projectInfo,
                     buildingData: state.buildingData,
                     measurements: state.measurements,
-                    itemSets: state.itemSets
+                    itemSets: state.itemSets,
+                    groupColors: state.groupColors,
+                    pageScales: state.pageScales
                 };
-
                 return {
                     past: newPast,
                     future: [current, ...state.future],
@@ -190,16 +209,16 @@ export const useStore = create<AppState>()(
                 if (state.future.length === 0) return state;
                 const next = state.future[0];
                 const newFuture = state.future.slice(1);
-
                 const current: HistoryState = {
                     materials: state.materials,
                     assemblyDefs: state.assemblyDefs,
                     projectInfo: state.projectInfo,
                     buildingData: state.buildingData,
                     measurements: state.measurements,
-                    itemSets: state.itemSets
+                    itemSets: state.itemSets,
+                    groupColors: state.groupColors,
+                    pageScales: state.pageScales
                 };
-
                 return {
                     past: [...state.past, current],
                     future: newFuture,
@@ -223,7 +242,9 @@ export const useStore = create<AppState>()(
                     numPeaks: 0,
                     valleyLength: 0
                 },
-                scale: 1, activePageIndex: 0, activeMeasurementId: null, measurements: [], itemSets: [], zoom: 1, pan: {x: 0, y: 0},
+                scale: 1,
+                pageScales: {},
+                activePageIndex: 0, activeMeasurementId: null, measurements: [], itemSets: [], groupColors: {}, zoom: 1, pan: {x: 0, y: 0},
                 past: [], future: []
             }),
 
@@ -237,8 +258,10 @@ export const useStore = create<AppState>()(
                     buildingData: file.data.buildingData,
                     lastModified: file.meta.lastModified,
                     scale: file.data.scale,
+                    pageScales: file.data.pageScales || {}, // Load page scales
                     measurements: file.data.measurements,
                     itemSets: file.data.itemSets,
+                    groupColors: (file.data as any).groupColors || {},
                     pdfFile: file.data.pdfBase64,
                     recentFiles: [newRecent, ...state.recentFiles.filter(f => f.name !== file.meta.name)].slice(0, 5),
                     activePageIndex: 0, activeMeasurementId: null, zoom: 1, pan: {x: 0, y: 0},
@@ -253,7 +276,7 @@ export const useStore = create<AppState>()(
 
             saveEstimate: () => {
                 const s = get();
-                const exportData: EstimateFile = {
+                const exportData = {
                     version: "2.0",
                     meta: {
                         name: s.projectInfo.projectName || "Untitled",
@@ -264,8 +287,10 @@ export const useStore = create<AppState>()(
                         projectInfo: s.projectInfo,
                         buildingData: s.buildingData,
                         scale: s.scale,
+                        pageScales: s.pageScales, // Save page scales
                         measurements: s.measurements,
                         itemSets: s.itemSets,
+                        groupColors: s.groupColors,
                         pdfBase64: s.pdfFile
                     }
                 };
@@ -282,6 +307,21 @@ export const useStore = create<AppState>()(
             updateProjectInfo: (updates) => { get().saveHistory(); set(s => ({projectInfo: {...s.projectInfo, ...updates}})); },
             updateBuildingData: (updates) => { get().saveHistory(); set(s => ({buildingData: {...s.buildingData, ...updates}})); },
             setScale: (scale) => set({scale}),
+
+            // NEW: Set scale for a specific page (or remove it to use global)
+            setPageScale: (pageIndex, scale) => {
+                get().saveHistory();
+                set(s => {
+                    const newPageScales = {...s.pageScales};
+                    if (scale === undefined) {
+                        delete newPageScales[pageIndex];
+                    } else {
+                        newPageScales[pageIndex] = scale;
+                    }
+                    return { pageScales: newPageScales };
+                });
+            },
+
             setPageIndex: (index) => set({activePageIndex: Math.max(0, index)}),
             setTool: (activeTool) => set({activeTool, activeWizardTool: null, isCalibrating: false}),
             setWizardTool: (tag) => set({
@@ -291,7 +331,6 @@ export const useStore = create<AppState>()(
             setActiveMeasurement: (activeMeasurementId) => set({activeMeasurementId}),
             setIsCalibrating: (isCalibrating) => set({isCalibrating, activeTool: 'select'}),
             setViewport: (zoom, pan) => set({zoom, pan}),
-
             addMeasurement: (type, points, name, tags = []) => {
                 get().saveHistory();
                 const {activePageIndex, measurements, activeWizardTool} = get();
@@ -308,7 +347,6 @@ export const useStore = create<AppState>()(
                 };
                 set({measurements: [...measurements, newMeasurement]});
             },
-
             updateMeasurement: (id, updates) => {
                 get().saveHistory();
                 set((s) => {
@@ -327,7 +365,6 @@ export const useStore = create<AppState>()(
                     return {measurements: s.measurements.map(m => m.id === id ? {...m, ...processedUpdates} : m)};
                 });
             },
-
             deleteMeasurement: (id) => {
                 get().saveHistory();
                 set((s) => ({
@@ -335,12 +372,16 @@ export const useStore = create<AppState>()(
                     activeMeasurementId: s.activeMeasurementId === id ? null : s.activeMeasurementId
                 }));
             },
-
             setMeasurements: (measurements) => {
                 get().saveHistory();
                 set({ measurements });
             },
-
+            setGroupColor: (group, color) => {
+                get().saveHistory();
+                set(s => ({
+                    groupColors: { ...s.groupColors, [group]: color }
+                }));
+            },
             deletePoint: (mId, idx) => {
                 get().saveHistory();
                 set((s) => ({
@@ -350,7 +391,6 @@ export const useStore = create<AppState>()(
                     })
                 }));
             },
-
             insertPointAfter: (mId, idx, clickPoint?: Point) => {
                 get().saveHistory();
                 set((s) => ({
@@ -370,7 +410,6 @@ export const useStore = create<AppState>()(
                     })
                 }));
             },
-
             addMaterial: (mat) => { get().saveHistory(); set((s) => ({materials: [...s.materials, {...mat, id: mat.sku || uuidv4()}]})); },
             importMaterials: (incomingMaterials) => {
                 get().saveHistory();
@@ -393,7 +432,6 @@ export const useStore = create<AppState>()(
                     return orig ? {materials: [...s.materials, {...orig, id: uuidv4(), name: `${orig.name} (Copy)`}]} : s;
                 });
             },
-
             addAssemblyDef: (name, category) => {
                 get().saveHistory();
                 set((s) => {
@@ -426,13 +464,11 @@ export const useStore = create<AppState>()(
                     } : s;
                 });
             },
-
             importAssemblyDefs: (incomingDefs) => {
                 get().saveHistory();
                 set((s) => {
                     const assemblyDefsMap = new Map<string, AssemblyDef>();
                     s.assemblyDefs.forEach(def => { assemblyDefsMap.set(def.id, def); });
-
                     incomingDefs.forEach(incomingDef => {
                         const defId = incomingDef.id || uuidv4();
                         const processedDef: AssemblyDef = {
@@ -457,7 +493,10 @@ export const useStore = create<AppState>()(
                                     childId: resolvedChildId,
                                     formula: c.formula || '0',
                                     round: c.round || 'up',
-                                    variableMapping: c.variableMapping || undefined
+                                    variableMapping: c.variableMapping || undefined,
+                                    isDynamic: c.isDynamic,
+                                    variantIds: c.variantIds || [],
+                                    defaultVariantId: c.defaultVariantId
                                 };
                             })
                         };
@@ -466,7 +505,6 @@ export const useStore = create<AppState>()(
                     return { assemblyDefs: Array.from(assemblyDefsMap.values()) };
                 });
             },
-
             addVariableToDef: (defId, name, type) => {
                 get().saveHistory();
                 set((s) => ({
@@ -512,22 +550,78 @@ export const useStore = create<AppState>()(
                     })
                 }));
             },
-
+            reorderNodeInDef: (defId, nodeId, direction) => {
+                get().saveHistory();
+                set(s => {
+                    const def = s.assemblyDefs.find(d => d.id === defId);
+                    if (!def) return s;
+                    const index = def.children.findIndex(c => c.id === nodeId);
+                    if (index === -1) return s;
+                    const newChildren = [...def.children];
+                    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+                    if (targetIndex >= 0 && targetIndex < newChildren.length) {
+                        const [removed] = newChildren.splice(index, 1);
+                        newChildren.splice(targetIndex, 0, removed);
+                        return {
+                            assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : {
+                                ...d,
+                                children: newChildren
+                            })
+                        };
+                    }
+                    return s;
+                });
+            },
             addItemSet: (name) => { get().saveHistory(); set(s => ({itemSets: [...s.itemSets, {id: uuidv4(), name, assemblies: []}]})); },
-
+            renameItemSet: (id, newName) => {
+                get().saveHistory();
+                set(s => ({
+                    itemSets: s.itemSets.map(i => i.id === id ? {...i, name: newName} : i)
+                }));
+            },
             setItemSets: (itemSets) => {
                 get().saveHistory();
                 set({ itemSets });
             },
-
             updateItemSet: (id, updates) => {
                 get().saveHistory();
                 set(s => ({
                     itemSets: s.itemSets.map(i => i.id === id ? {...i, ...updates} : i)
                 }));
             },
-
             deleteItemSet: (id) => { get().saveHistory(); set(s => ({itemSets: s.itemSets.filter(i => i.id !== id)})); },
+            saveItemSetAsFavorite: (id, name) => {
+                set(s => {
+                    const original = s.itemSets.find(i => i.id === id);
+                    if (!original) return s;
+                    const favorite: ItemSet = {
+                        ...original,
+                        id: uuidv4(),
+                        name: name || original.name,
+                        assemblies: original.assemblies.map(a => ({...a, id: uuidv4()}))
+                    };
+                    return { favoriteItemSets: [...s.favoriteItemSets, favorite] };
+                });
+            },
+            addItemSetFromFavorite: (favoriteId) => {
+                get().saveHistory();
+                set(s => {
+                    const template = s.favoriteItemSets.find(f => f.id === favoriteId);
+                    if (!template) return s;
+                    const newSet: ItemSet = {
+                        ...template,
+                        id: uuidv4(),
+                        name: template.name,
+                        assemblies: template.assemblies.map(a => ({...a, id: uuidv4()}))
+                    };
+                    return { itemSets: [...s.itemSets, newSet] };
+                });
+            },
+            deleteFavoriteItemSet: (favoriteId) => {
+                set(s => ({
+                    favoriteItemSets: s.favoriteItemSets.filter(f => f.id !== favoriteId)
+                }));
+            },
             addInstanceToSet: (setId, defId) => {
                 get().saveHistory();
                 set(s => {
@@ -544,7 +638,8 @@ export const useStore = create<AppState>()(
                         id: uuidv4(),
                         assemblyDefId: defId,
                         name: def.name,
-                        variableValues: initialVars
+                        variableValues: initialVars,
+                        selections: {}
                     };
                     return {
                         itemSets: s.itemSets.map(set => set.id !== setId ? set : {
@@ -574,6 +669,21 @@ export const useStore = create<AppState>()(
                         })
                     })
                 }));
+            },
+            updateInstanceSelection: (setId, instanceId, nodeId, selectionId) => {
+                get().saveHistory();
+                set(s => ({
+                    itemSets: s.itemSets.map(set => set.id !== setId ? set : {
+                        ...set,
+                        assemblies: set.assemblies.map(inst => inst.id !== instanceId ? inst : {
+                            ...inst,
+                            selections: {
+                                ...(inst.selections || {}),
+                                [nodeId]: selectionId
+                            }
+                        })
+                    })
+                }));
             }
         }),
         {
@@ -581,7 +691,8 @@ export const useStore = create<AppState>()(
             partialize: (state) => ({
                 materials: state.materials,
                 assemblyDefs: state.assemblyDefs,
-                recentFiles: state.recentFiles
+                recentFiles: state.recentFiles,
+                favoriteItemSets: state.favoriteItemSets
             })
         }
     )

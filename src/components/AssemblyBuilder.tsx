@@ -14,7 +14,9 @@ import {
     Search,
     Trash2,
     Upload,
-    X
+    X,
+    Layers,
+    GripVertical
 } from 'lucide-react';
 import {AssemblyNode} from '../types';
 import {SearchableSelector} from './SearchableSelector';
@@ -126,7 +128,7 @@ const AssemblyBuilder = () => {
     const [matCategory, setMatCategory] = useState('');
     const [matSearch, setMatSearch] = useState('');
 
-    // Assemblies State
+    //  Assemblies State 
     const [activeDefId, setActiveDefId] = useState<string | null>(null);
     const [newDefName, setNewDefName] = useState('');
     const [newDefCategory, setNewDefCategory] = useState('');
@@ -136,12 +138,22 @@ const AssemblyBuilder = () => {
     const [newVarName, setNewVarName] = useState('');
     const [newVarType, setNewVarType] = useState('linear');
     const [nodeFormula, setNodeFormula] = useState('');
+    const [nodeAlias, setNodeAlias] = useState('');
     const [nodeChildId, setNodeChildId] = useState('');
     const [nodeType, setNodeType] = useState<'material' | 'assembly'>('material');
     const [nodeMapping, setNodeMapping] = useState<Record<string, string>>({});
 
+    // Dynamic Node State
+    const [isDynamicNode, setIsDynamicNode] = useState(false);
+    const [variantIds, setVariantIds] = useState<string[]>([]);
+    const [defaultVariantId, setDefaultVariantId] = useState<string>('');
+
+    // Drag State
+    const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
+
     const activeDef = assemblyDefs.find(d => d.id === activeDefId);
 
+    // Material Handlers) 
     const handleSaveMaterial = () => {
         if (!matSku) return setStatus({msg: "SKU is required", type: 'error'});
         const isDuplicate = materials.some(m => m.sku.toLowerCase() === matSku.toLowerCase() && m.id !== editingMatId);
@@ -165,6 +177,7 @@ const AssemblyBuilder = () => {
         setMatCategory(m.category);
     };
 
+    // Import/Export
     const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -236,38 +249,96 @@ const AssemblyBuilder = () => {
         document.body.appendChild(link); link.click(); document.body.removeChild(link);
     };
 
+    // Node Editing 
     const handleSaveNode = () => {
-        if (!activeDefId || !nodeChildId) return;
+        if (!activeDefId) return;
+
+        if (isDynamicNode && nodeType === 'material') {
+            if (variantIds.length === 0) return setStatus({msg: "Select at least one variant", type: 'error'});
+            if (!defaultVariantId) return setStatus({msg: "Select a default variant", type: 'error'});
+        } else if (!nodeChildId) {
+            return setStatus({msg: "Select a material/assembly", type: 'error'});
+        }
+
         const nodeData = {
             childType: nodeType,
-            childId: nodeChildId,
+            childId: isDynamicNode ? defaultVariantId : nodeChildId,
             formula: nodeFormula,
+            alias: nodeAlias || undefined,
             round: 'up' as const,
-            variableMapping: nodeType === 'assembly' ? nodeMapping : undefined
+            variableMapping: nodeType === 'assembly' ? nodeMapping : undefined,
+            isDynamic: isDynamicNode && nodeType === 'material',
+            variantIds: isDynamicNode && nodeType === 'material' ? variantIds : undefined,
+            defaultVariantId: isDynamicNode && nodeType === 'material' ? defaultVariantId : undefined
         };
+
         if (editingNodeId) {
             updateNodeInDef(activeDefId, editingNodeId, nodeData);
         } else {
             addNodeToDef(activeDefId, nodeData);
         }
-        setNodeFormula(''); setNodeMapping({}); setEditingNodeId(null);
+
+        setNodeFormula('');
+        setNodeAlias('');
+        setNodeMapping({});
+        setEditingNodeId(null);
+        setNodeChildId('');
+        setIsDynamicNode(false);
+        setVariantIds([]);
+        setDefaultVariantId('');
     };
 
     const handleEditNode = (node: AssemblyNode) => {
         setEditingNodeId(node.id);
         setNodeFormula(node.formula);
+        setNodeAlias(node.alias || '');
         setNodeChildId(node.childId);
         setNodeType(node.childType);
         if (node.variableMapping) setNodeMapping(node.variableMapping);
+
+        if (node.isDynamic) {
+            setIsDynamicNode(true);
+            setVariantIds(node.variantIds || []);
+            setDefaultVariantId(node.defaultVariantId || node.childId);
+        } else {
+            setIsDynamicNode(false);
+            setVariantIds([]);
+            setDefaultVariantId('');
+        }
     };
 
+    // Drag and Drop 
+    const handleNodeDragStart = (e: React.DragEvent, id: string) => {
+        setDraggedNodeId(id);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleNodeDrop = (e: React.DragEvent, targetId: string) => {
+        e.preventDefault();
+        if (!activeDef || !draggedNodeId || draggedNodeId === targetId) {
+            setDraggedNodeId(null);
+            return;
+        }
+
+        const newChildren = [...activeDef.children];
+        const oldIndex = newChildren.findIndex(c => c.id === draggedNodeId);
+        const newIndex = newChildren.findIndex(c => c.id === targetId);
+
+        if (oldIndex !== -1 && newIndex !== -1) {
+            const [removed] = newChildren.splice(oldIndex, 1);
+            newChildren.splice(newIndex, 0, removed);
+            updateAssemblyDef(activeDef.id, { children: newChildren });
+        }
+        setDraggedNodeId(null);
+    };
+
+    // .Filter Logic
     const filteredMaterials = useMemo(() => {
         if (!matSearch) return materials;
         const low = matSearch.toLowerCase();
         return materials.filter(m => m.name.toLowerCase().includes(low) || m.sku.toLowerCase().includes(low) || m.category.toLowerCase().includes(low));
     }, [materials, matSearch]);
 
-    // Filter Assemblies for Search
     const filteredAssemblies = useMemo(() => {
         if (!asmSearch) return assemblyDefs;
         const low = asmSearch.toLowerCase();
@@ -288,17 +359,27 @@ const AssemblyBuilder = () => {
         return acc;
     }, {} as Record<string, typeof assemblyDefs>);
 
+    const handleAddVariant = (id: string) => {
+        if (id && !variantIds.includes(id)) {
+            const newIds = [...variantIds, id];
+            setVariantIds(newIds);
+            if (!defaultVariantId) setDefaultVariantId(id);
+        }
+    };
+
     return (
         <div className="flex flex-col h-full w-full bg-gray-100 overflow-hidden">
             <div className="bg-white border-b px-4 flex gap-6 shrink-0 shadow-sm z-10">
                 <button className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'assemblies' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`} onClick={() => setActiveSubTab('assemblies')}>AssemblyDB</button>
                 <button className={`py-3 text-sm font-medium border-b-2 transition-colors ${activeSubTab === 'materials' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`} onClick={() => setActiveSubTab('materials')}>MaterialDB</button>
-            </div>
+                </div>
             <div className="flex-1 overflow-hidden p-4 w-full">
                 <StatusMessage msg={status.msg} type={status.type}/>
+
                 {activeSubTab === 'materials' && (
                     <div className="h-full flex flex-col w-full gap-4">
                         <div className="bg-white p-3 rounded-lg shadow-sm border shrink-0">
+                            {/* Material Form UI */}
                             <div className="flex justify-between items-center mb-3 border-b pb-2">
                                 <h3 className="font-bold flex items-center gap-2 text-gray-700"><Package size={16}/> Material Database</h3>
                                 <div className="flex gap-2">
@@ -367,9 +448,11 @@ const AssemblyBuilder = () => {
                         </div>
                     </div>
                 )}
+
                 {activeSubTab === 'assemblies' && (
                     <div className="h-full flex flex-col w-full gap-4">
                         <div className="bg-white p-3 rounded-lg shadow-sm border shrink-0">
+                            {/* Assembly Form UI */}
                             <div className="flex justify-between items-center mb-3 border-b pb-2">
                                 <h3 className="font-bold flex items-center gap-2 text-gray-700"><Cuboid size={16}/> Assembly Database</h3>
                                 <div className="flex gap-2">
@@ -393,19 +476,13 @@ const AssemblyBuilder = () => {
                         </div>
                         <div className="bg-white rounded-lg shadow-sm border flex-1 flex overflow-hidden min-h-0">
                             <div className="w-64 lg:w-80 border-r flex flex-col overflow-hidden shrink-0">
-                                {/* UPDATED: Search Header */}
+                                {/* Search Header */}
                                 <div className="p-3 border-b bg-gray-50 flex items-center gap-2 shrink-0">
                                     <Search size={16} className="text-gray-400"/>
-                                    <input
-                                        className="w-full bg-transparent text-sm outline-none placeholder-gray-400"
-                                        placeholder="Search assemblies..."
-                                        value={asmSearch}
-                                        onChange={e => setAsmSearch(e.target.value)}
-                                    />
+                                    <input className="w-full bg-transparent text-sm outline-none placeholder-gray-400" placeholder="Search assemblies..." value={asmSearch} onChange={e => setAsmSearch(e.target.value)}/>
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-2 bg-gray-50 min-h-0">
                                     {asmSearch ? (
-                                        // Flat list for search results
                                         <div className="space-y-1">
                                             {filteredAssemblies.map(d => (
                                                 <div key={d.id} className={`p-2 border-b rounded bg-white shadow-sm flex justify-between items-center group cursor-pointer hover:bg-gray-50 ${activeDefId === d.id ? 'bg-blue-50 border border-blue-200' : ''}`} onClick={() => setActiveDefId(d.id)}>
@@ -419,7 +496,6 @@ const AssemblyBuilder = () => {
                                             {filteredAssemblies.length === 0 && <div className="text-xs text-gray-400 p-2 italic text-center">No assemblies found.</div>}
                                         </div>
                                     ) : (
-                                        // Grouped list for default view
                                         Object.entries(groupedAssemblies)
                                             .sort(([a], [b]) => a.localeCompare(b))
                                             .map(([category, items]) => (
@@ -457,25 +533,117 @@ const AssemblyBuilder = () => {
                                             <div className="p-4 rounded border border-blue-200 bg-blue-50/30">
                                                 <h5 className="text-xs font-bold uppercase text-blue-700 mb-3">2. Calculation Logic</h5>
                                                 <div className="space-y-2 mb-4">
-                                                    {activeDef.children.map(c => (
-                                                        <div key={c.id} className={`text-sm border p-3 rounded flex justify-between items-center bg-white shadow-sm ${editingNodeId === c.id ? 'ring-2 ring-blue-400 border-transparent' : ''}`}>
-                                                            <div className="flex items-center gap-3"><span className="font-mono bg-gray-100 px-2 py-0.5 border rounded text-blue-700 font-bold text-xs">{c.formula}</span><span className="text-gray-400 text-xs">&rarr;</span><span className="font-medium text-gray-800">{c.childType === 'material' ? materials.find(m => m.id === c.childId)?.name : assemblyDefs.find(a => a.id === c.childId)?.name}</span></div>
-                                                            <div className="flex gap-1"><button onClick={() => handleEditNode(c)} className="text-gray-400 hover:text-blue-600 p-1"><Pencil size={14}/></button><button onClick={() => removeNodeFromDef(activeDef.id, c.id)} className="text-gray-400 hover:text-red-600 p-1"><Trash2 size={14}/></button></div>
+                                                    {activeDef.children.map((c) => (
+                                                        <div
+                                                            key={c.id}
+                                                            className={`text-sm border p-3 rounded flex flex-col gap-2 bg-white shadow-sm transition-opacity ${editingNodeId === c.id ? 'ring-2 ring-blue-400 border-transparent' : ''} ${draggedNodeId === c.id ? 'opacity-40' : 'opacity-100'}`}
+                                                            draggable
+                                                            onDragStart={(e) => handleNodeDragStart(e, c.id)}
+                                                            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                                                            onDrop={(e) => handleNodeDrop(e, c.id)}
+                                                        >
+                                                            <div className="flex justify-between items-center">
+                                                                <div className="flex items-center gap-3">
+                                                                    <GripVertical size={14} className="text-gray-300 cursor-move" />
+                                                                    <span className="font-mono bg-gray-100 px-2 py-0.5 border rounded text-blue-700 font-bold text-xs">{c.formula}</span>
+                                                                    <span className="text-gray-400 text-xs">&rarr;</span>
+                                                                    {c.isDynamic ? (
+                                                                        <span className="font-medium text-purple-700 flex items-center gap-1"><Layers size={14}/>{c.variantIds?.length || 0} Variants</span>
+                                                                    ) : (
+                                                                        <span className="font-medium text-gray-800">{c.childType === 'material' ? materials.find(m => m.id === c.childId)?.name : assemblyDefs.find(a => a.id === c.childId)?.name}</span>
+                                                                    )}
+                                                                    {c.alias && (
+                                                                        <span className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded border border-yellow-200">As: {c.alias}</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex gap-1"><button onClick={() => handleEditNode(c)} className="text-gray-400 hover:text-blue-600 p-1"><Pencil size={14}/></button><button onClick={() => removeNodeFromDef(activeDef.id, c.id)} className="text-gray-400 hover:text-red-600 p-1"><Trash2 size={14}/></button></div>
+                                                            </div>
+                                                            {c.childType === 'material' && (
+                                                                <div className="text-[10px] text-gray-400 pl-6 flex gap-3">
+                                                                    <span>Ref SKU: <code className="bg-gray-100 px-1 rounded">{materials.find(m => m.id === (c.isDynamic ? c.defaultVariantId : c.childId))?.sku || "N/A"}</code></span>
+                                                                    {c.isDynamic && <span>Default: {materials.find(m => m.id === c.defaultVariantId)?.name || 'Unknown'}</span>}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>
                                                 <div className={`border p-4 rounded-lg space-y-3 transition-all overflow-x-auto ${editingNodeId ? 'bg-orange-50 border-orange-300 ring-1 ring-orange-200' : 'bg-white'}`}>
-                                                    <div className="flex gap-2 min-w-[500px]">
-                                                        <select className="border p-2 text-xs rounded bg-white" value={nodeType} onChange={e => { setNodeType(e.target.value as any); setNodeChildId(''); }}>
-                                                            <option value="material">Add Material</option>
-                                                            <option value="assembly">Add Sub-Assembly</option>
-                                                        </select>
-                                                        <SearchableSelector
-                                                            items={nodeType === 'material' ? materials.map(m => ({ id: m.id, name: m.name, category: m.category || 'Uncategorized', secondaryText: m.sku })) : assemblyDefs.filter(a => a.id !== activeDefId).map(a => ({ id: a.id, name: a.name, category: a.category || 'Uncategorized' }))}
-                                                            value={nodeChildId} onChange={setNodeChildId} placeholder="Search..." className="flex-1"
-                                                        />
+                                                    <div className="flex gap-2 min-w-[500px] flex-col lg:flex-row">
+                                                        <div className="flex gap-2 flex-1">
+                                                            <select className="border p-2 text-xs rounded bg-white" value={nodeType} onChange={e => { setNodeType(e.target.value as any); setNodeChildId(''); setIsDynamicNode(false); }}>
+                                                                <option value="material">Add Material</option>
+                                                                <option value="assembly">Add Sub-Assembly</option>
+                                                            </select>
+
+                                                            {!isDynamicNode ? (
+                                                                <SearchableSelector
+                                                                    items={nodeType === 'material' ? materials.map(m => ({ id: m.id, name: m.name, category: m.category || 'Uncategorized', secondaryText: m.sku })) : assemblyDefs.filter(a => a.id !== activeDefId).map(a => ({ id: a.id, name: a.name, category: a.category || 'Uncategorized' }))}
+                                                                    value={nodeChildId} onChange={setNodeChildId} placeholder="Search..." className="flex-1"
+                                                                />
+                                                            ) : (
+                                                                <div className="flex-1 p-2 border rounded bg-purple-50 border-purple-200 flex items-center justify-center text-xs text-purple-700 font-bold">
+                                                                    Dynamic Mode Active
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {nodeType === 'material' && (
+                                                            <div className="flex items-center gap-2">
+                                                                <input type="checkbox" id="dynamicCheck" checked={isDynamicNode} onChange={e => setIsDynamicNode(e.target.checked)} className="rounded text-purple-600 focus:ring-purple-500"/>
+                                                                <label htmlFor="dynamicCheck" className="text-xs font-bold text-gray-600 select-none cursor-pointer">Variant?</label>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="flex gap-2 min-w-[500px]"><input className="border p-2 text-xs rounded flex-1 bg-white font-mono" placeholder="Formula" value={nodeFormula} onChange={e => setNodeFormula(e.target.value)}/><button className={`text-white px-4 py-1.5 text-xs rounded font-bold transition-colors ${editingNodeId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-600 hover:bg-blue-700'}`} onClick={handleSaveNode}>{editingNodeId ? 'Update' : 'Add'}</button></div>
+
+                                                    {/* Dynamic Variant Selector UI */}
+                                                    {isDynamicNode && nodeType === 'material' && (
+                                                        <div className="bg-purple-50 p-3 rounded border border-purple-100">
+                                                            <label className="block text-[10px] font-bold text-purple-700 uppercase mb-2">Select Variant SKUs</label>
+                                                            <div className="flex gap-2 mb-2">
+                                                                <SearchableSelector
+                                                                    items={materials.map(m => ({ id: m.id, name: m.name, category: m.category || 'Uncategorized', secondaryText: m.sku }))}
+                                                                    value=""
+                                                                    onChange={handleAddVariant}
+                                                                    placeholder="Search to add variant..."
+                                                                    className="flex-1"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-1 max-h-32 overflow-y-auto mb-2 bg-white border rounded p-2">
+                                                                {variantIds.length === 0 && <div className="text-xs text-gray-400 italic">No variants selected</div>}
+                                                                {variantIds.map(vid => {
+                                                                    const mat = materials.find(m => m.id === vid);
+                                                                    return (
+                                                                        <div key={vid} className="flex justify-between items-center text-xs p-1 hover:bg-gray-50 rounded">
+                                                                            <span>{mat?.name || vid}</span>
+                                                                            <button onClick={() => setVariantIds(ids => ids.filter(id => id !== vid))} className="text-red-500 hover:bg-red-50 p-1 rounded"><X size={12}/></button>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <label className="text-[10px] font-bold text-gray-500">Default:</label>
+                                                                <select
+                                                                    className="border p-1 text-xs rounded flex-1"
+                                                                    value={defaultVariantId}
+                                                                    onChange={e => setDefaultVariantId(e.target.value)}
+                                                                >
+                                                                    <option value="">Select Default...</option>
+                                                                    {variantIds.map(vid => {
+                                                                        const mat = materials.find(m => m.id === vid);
+                                                                        return <option key={vid} value={vid}>{mat?.name || vid}</option>;
+                                                                    })}
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    <div className="flex gap-2 min-w-[500px]">
+                                                        <div className="flex-1 flex gap-2">
+                                                            <input className="border p-2 text-xs rounded flex-1 bg-white font-mono" placeholder="Formula (e.g. Area / 32)" value={nodeFormula} onChange={e => setNodeFormula(e.target.value)}/>
+                                                            <input className="border p-2 text-xs rounded w-32 bg-white" placeholder="Optional Alias" value={nodeAlias} onChange={e => setNodeAlias(e.target.value)}/>
+                                                        </div>
+                                                        <button className={`text-white px-4 py-1.5 text-xs rounded font-bold transition-colors ${editingNodeId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-600 hover:bg-blue-700'}`} onClick={handleSaveNode}>{editingNodeId ? 'Update' : 'Add'}</button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

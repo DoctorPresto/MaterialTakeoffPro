@@ -4,6 +4,25 @@ export const getDistance = (p1: Point, p2: Point) =>
     Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
 
 export const getPathLength = (points: Point[]) => {
+    // Check if we are using the graph-based structure (branching lines)
+    const isGraph = points.some(p => p.connectsTo && p.connectsTo.length > 0);
+
+    if (isGraph) {
+        let totalLength = 0;
+        points.forEach(p => {
+            if (p.connectsTo) {
+                p.connectsTo.forEach(targetIdx => {
+                    const target = points[targetIdx];
+                    if (target) {
+                        totalLength += getDistance(p, target);
+                    }
+                });
+            }
+        });
+        return totalLength;
+    }
+
+    // Fallback: Sequential calculation (for Shapes and legacy Lines)
     return points.reduce((acc, point, i) => {
         if (i === 0) return 0;
         return acc + getDistance(points[i - 1], point);
