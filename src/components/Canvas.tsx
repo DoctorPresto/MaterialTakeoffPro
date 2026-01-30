@@ -1,795 +1,35 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Document, Page, pdfjs} from 'react-pdf';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Document, Page, pdfjs } from 'react-pdf';
+// FIX: Import worker directly from node_modules using Vite's ?url suffix
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-import {useStore} from '../store';
-import {MeasurementType, Point, Measurement} from '../types';
+import { useStore } from '../store';
+import { MeasurementType, Point } from '../types';
 import {
-    Check,
-    ChevronDown,
-    ChevronLeft,
-    ChevronRight,
-    ChevronUp,
-    CreditCard as Edit3,
-    Eye,
-    EyeOff,
-    FileX,
-    GripVertical,
-    List,
-    Minus,
-    MousePointer2,
-    Move,
-    Plus,
-    PlusCircle,
-    RotateCcw,
-    Ruler,
-    Settings,
-    Spline,
-    Square,
-    Trash2,
-    X
-}
-    from 'lucide-react';
+    Check, ChevronLeft, ChevronRight, FileX, Minus, Plus, RotateCcw, Ruler, Square
+} from 'lucide-react';
 
-// Performance optimization constants
-const ZOOM_INCREMENT = 0.05; // 5% zoom increment
-const MAX_ZOOM = 5;
-const MIN_ZOOM = 0.1;
-const RENDER_THROTTLE = 60; // 60fps
-
-const useDraggable = (initialX: number, initialY: number) => {
-    const [position, setPosition] = useState({ x: initialX, y: initialY });
-    const [isDragging, setIsDragging] = useState(false);
-    const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-
-    const handleMouseDown = (e: React.MouseEvent) => {
-        setIsDragging(true);
-        setDragOffset({
-            x: e.clientX - position.x,
-            y: e.clientY - position.y
-        });
-    };
-
-    useEffect(() => {
-        const handleMouseMove = (e: MouseEvent) => {
-            if (isDragging) {
-                setPosition({
-                    x: e.clientX - dragOffset.x,
-                    y: e.clientY - dragOffset.y
-                });
-            }
-        };
-        const handleMouseUp = () => {
-            setIsDragging(false);
-        };
-
-        if (isDragging) {
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
-            return () => {
-                document.removeEventListener('mousemove', handleMouseMove);
-                document.removeEventListener('mouseup', handleMouseUp);
-            };
-        }
-    }, [isDragging, dragOffset]);
-
-    return { position, handleMouseDown };
-};
-
-const InputModal = ({
-                        isOpen, title, label, initialValue, onSave, onCancel
-                    }: {
-    isOpen: boolean,
-    title: string,
-    label: string,
-    initialValue: string,
-    onSave: (val: string) => void,
-    onCancel: () => void
-}) => {
-    const [val, setVal] = useState(initialValue);
-    useEffect(() => {
-        if (isOpen) setVal(initialValue)
-    }, [isOpen, initialValue]);
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center">
-            <div className="bg-white p-6 rounded-lg shadow-xl w-80 transform transition-all">
-                <h3 className="font-bold mb-4 text-lg text-gray-800">{title}</h3>
-                <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">{label}</label>
-                <input
-                    autoFocus
-                    className="w-full border p-2 rounded mb-6 focus:ring-2 focus:ring-blue-500 outline-none"
-                    value={val}
-                    onChange={e => setVal(e.target.value)}
-                    onKeyDown={e => {
-                        if (e.key === 'Enter') onSave(val);
-                    }}
-                />
-                <div className="flex gap-2 justify-end">
-                    <button onClick={onCancel}
-                            className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded font-medium">Cancel
-                    </button>
-                    <button onClick={() => onSave(val)}
-                            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded font-bold shadow-sm">Confirm
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- Context Menu ---
-const ContextMenu = ({
-                         x, y, onClose, measurement, actions
-                     }: {
-    x: number, y: number, onClose: () => void, measurement: any,
-    actions: {
-        deletePoint: () => void,
-        addPoint: () => void,
-        rename: () => void,
-        deleteShape: () => void
-    }
-}) => {
-    useEffect(() => {
-        const handleOutside = () => onClose();
-        document.addEventListener('click', handleOutside);
-        return () => document.removeEventListener('click', handleOutside);
-    }, []);
-
-    return (
-        <div
-            className="fixed bg-white shadow-xl border rounded z-[100] w-56 py-1 text-gray-700"
-            style={{top: y, left: x}}
-            onClick={e => e.stopPropagation()}
-        >
-            <div className="px-4 py-2 border-b bg-gray-50 text-xs font-bold text-gray-500 truncate">
-                {measurement.name}
-            </div>
-
-            <button onClick={() => {
-                actions.rename();
-                onClose();
-            }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm flex gap-2 items-center"><Edit3
-                size={14}/> Rename
-            </button>
-
-            <div className="h-[1px] bg-gray-100 my-1"></div>
-
-            <button onClick={() => {
-                actions.addPoint();
-                onClose();
-            }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm flex gap-2 items-center text-blue-600">
-                <PlusCircle size={14}/> Add Vertex After (Midpoint)
-            </button>
-            <button onClick={() => {
-                actions.deletePoint();
-                onClose();
-            }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm flex gap-2 items-center text-red-600">
-                <Trash2 size={14}/> Delete Vertex
-            </button>
-
-            <div className="h-[1px] bg-gray-100 my-1"></div>
-            <button onClick={() => {
-                actions.deleteShape();
-                onClose();
-            }}
-                    className="w-full text-left px-4 py-2 hover:bg-red-50 text-sm flex gap-2 items-center text-red-700 font-bold">
-                <X size={14}/> Delete Shape
-            </button>
-        </div>
-    );
-};
-
-const EdgeContextMenu = ({
-                             x, y, onClose, onAddVertex
-                         }: {
-    x: number, y: number, onClose: () => void, onAddVertex: () => void
-}) => {
-    useEffect(() => {
-        const handleOutside = () => onClose();
-        document.addEventListener('click', handleOutside);
-        return () => document.removeEventListener('click', handleOutside);
-    }, []);
-
-    return (
-        <div
-            className="fixed bg-white shadow-xl border rounded z-[100] w-48 py-1 text-gray-700"
-            style={{top: y, left: x}}
-            onClick={e => e.stopPropagation()}
-        >
-            <button onClick={() => {
-                onAddVertex();
-                onClose();
-            }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm flex gap-2 items-center text-blue-600">
-                <PlusCircle size={14}/> Add Vertex Here
-            </button>
-        </div>
-    );
-};
-
-// --- Floating Drawing Panel ---
-const FloatingDrawingPanel = ({
-                                  activeTool,
-                                  onToolChange,
-                                  isCollapsed,
-                                  onToggleCollapse,
-                                  measurements,
-                                  activePageIndex,
-                                  onSelectMeasurement,
-                                  selectedMeasurement,
-                                  onToggleMeasurementVisibility,
-                                  onOpenProperties,
-                                  onUpdateMeasurement,
-                                  onReorderMeasurements
-                              }: {
-    activeTool: string,
-    onToolChange: (tool: 'select' | 'line' | 'shape' | 'measure') => void,
-    isCollapsed: boolean, onToggleCollapse: () => void, measurements: Measurement[], activePageIndex: number,
-    onSelectMeasurement: (id: string) => void, selectedMeasurement: string | null,
-    onToggleMeasurementVisibility: (id: string) => void,
-    onOpenProperties: (id: string) => void,
-    onUpdateMeasurement: (id: string, updates: any) => void,
-    onReorderMeasurements: (newGroupOrder: string[]) => void
-}) => {
-    const { position, handleMouseDown } = useDraggable(20, 100);
-    const [showGroupsList, setShowGroupsList] = useState(true);
-    const [draggedMeasurementId, setDraggedMeasurementId] = useState<string | null>(null);
-    const [dropTargetGroup, setDropTargetGroup] = useState<string | null>(null);
-
-    // Collapsed state for individual groups
-    const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-    // Drag state for group reordering
-    const [draggedGroup, setDraggedGroup] = useState<string | null>(null);
-
-    const currentPageMeasurements = useMemo(() =>
-            measurements.filter(m => m.pageIndex === activePageIndex),
-        [measurements, activePageIndex]);
-
-    // Derive strict group order from current measurements array
-    const groupOrder = useMemo(() => {
-        const groups = new Set<string>();
-        currentPageMeasurements.forEach(m => {
-            groups.add(m.group || 'Ungrouped');
-        });
-        return Array.from(groups);
-    }, [currentPageMeasurements]);
-
-    const toggleGroupCollapse = (group: string) => {
-        setCollapsedGroups(prev => ({...prev, [group]: !prev[group]}));
-    };
-
-    // Group DnD Handlers
-    const handleGroupDragStart = (e: React.DragEvent, group: string) => {
-        e.dataTransfer.setData('type', 'group');
-        setDraggedGroup(group);
-        e.dataTransfer.effectAllowed = 'move';
-    };
-
-    const handleGroupDrop = (e: React.DragEvent, targetGroup: string) => {
-        e.preventDefault();
-        const type = e.dataTransfer.getData('type');
-
-        // Handle Group Reordering
-        if (type === 'group' && draggedGroup && draggedGroup !== targetGroup) {
-            const newOrder = [...groupOrder];
-            const oldIndex = newOrder.indexOf(draggedGroup);
-            const newIndex = newOrder.indexOf(targetGroup);
-            newOrder.splice(oldIndex, 1);
-            newOrder.splice(newIndex, 0, draggedGroup);
-            onReorderMeasurements(newOrder);
-        }
-
-        // Handle Measurement Re-grouping (if dropped on header)
-        if (!type && draggedMeasurementId) {
-            const targetGroupName = targetGroup === 'Ungrouped' ? '' : targetGroup;
-            onUpdateMeasurement(draggedMeasurementId, {group: targetGroupName});
-        }
-
-        setDraggedGroup(null);
-        setDraggedMeasurementId(null);
-        setDropTargetGroup(null);
-    };
-
-    return (
-        <div
-            className="fixed z-50 bg-white rounded-lg shadow-xl border-2 border-gray-200 select-none w-64"
-            style={{left: position.x, top: position.y}}
-        >
-            {/* Header */}
-            <div
-                className="flex items-center justify-between p-2 bg-gray-50 rounded-t-lg cursor-move border-b"
-                onMouseDown={handleMouseDown}
-            >
-                <div className="flex items-center gap-2">
-                    <Move size={14} className="text-gray-400"/>
-                    <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">Measures</span>
-                </div>
-                <button
-                    onClick={onToggleCollapse}
-                    className="p-1 hover:bg-gray-200 rounded text-gray-500"
-                >
-                    {isCollapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
-                </button>
-            </div>
-
-            {/* Content */}
-            {!isCollapsed && (
-                <div className="p-3 space-y-3">
-                    {/* Tool Buttons */}
-                    <div className="flex flex-col gap-2">
-                        <button
-                            onClick={() => onToolChange('select')}
-                            className={`flex items-center gap-2 p-2 rounded text-sm font-medium transition-colors ${
-                                activeTool === 'select'
-                                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                    : 'hover:bg-gray-100 text-gray-600 border border-transparent'
-                            }`}
-                        >
-                            <MousePointer2 size={16}/> Select & Edit
-                        </button>
-
-                        <button
-                            onClick={() => onToolChange('line')}
-                            className={`flex items-center gap-2 p-2 rounded text-sm font-medium transition-colors ${
-                                activeTool === 'line'
-                                    ? 'bg-red-100 text-red-700 border border-red-200'
-                                    : 'hover:bg-gray-100 text-gray-600 border border-transparent'
-                            }`}
-                        >
-                            <Spline size={16}/> Draw Line
-                        </button>
-
-                        <button
-                            onClick={() => onToolChange('shape')}
-                            className={`flex items-center gap-2 p-2 rounded text-sm font-medium transition-colors ${
-                                activeTool === 'shape'
-                                    ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                                    : 'hover:bg-gray-100 text-gray-600 border border-transparent'
-                            }`}
-                        >
-                            <Square size={16}/> Draw Shape
-                        </button>
-
-                        {/* Measure Tool */}
-                        <button
-                            onClick={() => onToolChange('measure')}
-                            className={`flex items-center gap-2 p-2 rounded text-sm font-medium transition-colors ${
-                                activeTool === 'measure'
-                                    ? 'bg-orange-100 text-orange-700 border border-orange-200'
-                                    : 'hover:bg-gray-100 text-gray-600 border border-transparent'
-                            }`}
-                        >
-                            <Ruler size={16}/> Quick Measure
-                        </button>
-                    </div>
-
-                    <div className="h-[1px] bg-gray-200"></div>
-
-                    {/* Groups List */}
-                    <div>
-                        <button
-                            onClick={() => setShowGroupsList(!showGroupsList)}
-                            className="w-full flex items-center justify-between p-2 hover:bg-gray-100 rounded text-sm font-medium text-gray-600"
-                        >
-                            <div className="flex items-center gap-2">
-                                <List size={16}/>
-                                <span>Groups & Shapes</span>
-                                <span className="text-xs bg-gray-200 px-1.5 py-0.5 rounded">{currentPageMeasurements.length}</span>
-                            </div>
-                            {showGroupsList ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
-                        </button>
-
-                        {showGroupsList && (
-                            <div className="mt-2 max-h-64 overflow-y-auto space-y-1">
-                                {currentPageMeasurements.length === 0 && (
-                                    <div className="text-xs text-gray-400 italic text-center py-4">
-                                        No Measurements Taken Yet
-                                    </div>
-                                )}
-                                {groupOrder.map((groupName) => {
-                                    const items = currentPageMeasurements.filter(m => (m.group || 'Ungrouped') === groupName);
-                                    const isDropTarget = dropTargetGroup === groupName;
-                                    const isGroupCollapsed = collapsedGroups[groupName];
-                                    const isDraggingGroup = draggedGroup === groupName;
-
-                                    return (
-                                        <div
-                                            key={groupName}
-                                            className={`mb-2 transition-opacity ${isDraggingGroup ? 'opacity-40' : 'opacity-100'}`}
-                                            draggable
-                                            onDragStart={(e) => handleGroupDragStart(e, groupName)}
-                                            onDragOver={(e) => {
-                                                e.preventDefault();
-                                                e.dataTransfer.dropEffect = 'move';
-                                                setDropTargetGroup(groupName);
-                                            }}
-                                            onDragLeave={() => setDropTargetGroup(null)}
-                                            onDrop={(e) => handleGroupDrop(e, groupName)}
-                                        >
-                                            <div
-                                                className={`flex items-center gap-2 p-1.5 bg-gray-50 rounded text-xs font-medium text-gray-600 transition-colors cursor-move border border-transparent ${
-                                                    isDropTarget ? 'bg-blue-100 border-blue-400' : 'hover:bg-gray-100'
-                                                }`}
-                                            >
-                                                <GripVertical size={12} className="text-gray-400" />
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); toggleGroupCollapse(groupName); }}
-                                                    className="hover:bg-gray-200 rounded p-0.5"
-                                                >
-                                                    {isGroupCollapsed ? <ChevronRight size={12}/> : <ChevronDown size={12}/>}
-                                                </button>
-
-                                                <div
-                                                    className="w-2.5 h-2.5 rounded border border-gray-300"
-                                                    style={{backgroundColor: getGroupColor(groupName === 'Ungrouped' ? undefined : groupName)}}
-                                                />
-                                                <span className="flex-1 truncate select-none">{groupName}</span>
-                                                <span className="text-[10px] bg-gray-200 px-1.5 py-0.5 rounded-full">{items.length}</span>
-                                            </div>
-
-                                            {!isGroupCollapsed && (
-                                                <div className="ml-4 space-y-1 mt-1 pl-2 border-l border-gray-200">
-                                                    {items.map((m) => (
-                                                        <div
-                                                            key={m.id}
-                                                            draggable
-                                                            onDragStart={(e) => {
-                                                                e.stopPropagation(); // Stop group drag
-                                                                setDraggedMeasurementId(m.id);
-                                                                e.dataTransfer.effectAllowed = 'move';
-                                                            }}
-                                                            onDragEnd={() => {
-                                                                setDraggedMeasurementId(null);
-                                                                setDropTargetGroup(null);
-                                                            }}
-                                                            className={`flex items-center justify-between p-1.5 rounded text-xs transition-colors cursor-move ${
-                                                                selectedMeasurement === m.id
-                                                                    ? 'bg-blue-100 border border-blue-200'
-                                                                    : 'hover:bg-gray-100 border border-transparent'
-                                                            } ${draggedMeasurementId === m.id ? 'opacity-50' : ''}`}
-                                                            onClick={() => onSelectMeasurement(m.id)}
-                                                        >
-                                                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                                {m.type === 'shape' ? <Square size={12}/> : <Spline size={12}/>}
-                                                                <span className="truncate font-medium">{m.name}</span>
-                                                            </div>
-                                                            <div className="flex gap-1">
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        onOpenProperties(m.id);
-                                                                    }}
-                                                                    className="p-1 hover:bg-gray-200 rounded text-gray-400"
-                                                                    title="Properties"
-                                                                >
-                                                                    <Settings size={12}/>
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        onToggleMeasurementVisibility(m.id);
-                                                                    }}
-                                                                    className="p-1 hover:bg-gray-200 rounded text-gray-400"
-                                                                >
-                                                                    {m.hidden ? <EyeOff size={12}/> : <Eye size={12}/>}
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
-// Properties Panel and PDF Manager
-const FloatingPropertiesPanel = ({
-                                     measurement, onUpdate, onDelete, onClose, isOpen, allMeasurements
-                                 }: {
-    measurement: any,
-    onUpdate: (updates: any) => void,
-    onDelete: () => void,
-    onClose: () => void,
-    isOpen: boolean,
-    allMeasurements: any[]
-}) => {
-    const { position, handleMouseDown } = useDraggable(window.innerWidth - 370, 100);
-    const [isCollapsed, setIsCollapsed] = useState(false);
-
-    const [name, setName] = useState(measurement.name || '');
-    const [group, setGroup] = useState(measurement.group || '');
-    const [rotation, setRotation] = useState(measurement.rotation || 0);
-
-    // Get unique group names from all measurements
-    const existingGroups = useMemo(() => {
-        const groups = new Set<string>();
-        allMeasurements.forEach(m => {
-            if (m.group && m.group.trim()) {
-                groups.add(m.group);
-            }
-        });
-        return Array.from(groups).sort();
-    }, [allMeasurements]);
-
-    useEffect(() => {
-        setName(measurement.name || '');
-        setGroup(measurement.group || '');
-        setRotation(measurement.rotation || 0);
-    }, [measurement]);
-
-    const handleNameChange = (value: string) => {
-        setName(value);
-        onUpdate({name: value});
-    };
-
-    const handleGroupChange = (value: string) => {
-        setGroup(value);
-        onUpdate({group: value});
-    };
-
-    const applyTransformations = (updates: any) => {
-        if (!measurement) return;
-
-        const centerX = measurement.points.reduce((sum: number, p: Point) => sum + p.x, 0) / measurement.points.length;
-        const centerY = measurement.points.reduce((sum: number, p: Point) => sum + p.y, 0) / measurement.points.length;
-
-        let transformedPoints = [...measurement.points];
-
-        if (updates.rotation !== undefined) {
-            const rotationDiff = (updates.rotation - (measurement.rotation || 0)) * Math.PI / 180;
-            const cos = Math.cos(rotationDiff);
-            const sin = Math.sin(rotationDiff);
-
-            transformedPoints = transformedPoints.map(p => {
-                const dx = p.x - centerX;
-                const dy = p.y - centerY;
-                return {
-                    x: centerX + dx * cos - dy * sin,
-                    y: centerY + dx * sin + dy * cos
-                };
-            });
-        }
-
-        onUpdate({...updates, points: transformedPoints});
-    };
-
-    if (!isOpen) return null;
-
-    return (
-        <div
-            className="fixed z-50 bg-white rounded-lg shadow-xl border-2 border-gray-200 select-none w-80"
-            style={{left: position.x, top: position.y}}
-        >
-            {/* Header */}
-            <div
-                className="flex items-center justify-between p-2 bg-gray-50 rounded-t-lg cursor-move border-b"
-                onMouseDown={handleMouseDown}
-            >
-                <div className="flex items-center gap-2">
-                    <Move size={14} className="text-gray-400"/>
-                    <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">Properties</span>
-                </div>
-                <div className="flex gap-1">
-                    <button
-                        onClick={() => setIsCollapsed(!isCollapsed)}
-                        className="p-1 hover:bg-gray-200 rounded text-gray-500"
-                    >
-                        {isCollapsed ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
-                    </button>
-                    <button
-                        onClick={onClose}
-                        className="p-1 hover:bg-gray-200 rounded text-gray-500"
-                    >
-                        <X size={14}/>
-                    </button>
-                </div>
-            </div>
-
-            {/* Content */}
-            {!isCollapsed && (
-                <div className="p-4 space-y-4 max-h-96 overflow-y-auto">
-                    {/* Name */}
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Name</label>
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => handleNameChange(e.target.value)}
-                            className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                            placeholder="Enter name..."
-                        />
-                    </div>
-
-                    {/* Group */}
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Group</label>
-                        <input
-                            type="text"
-                            value={group}
-                            onChange={(e) => handleGroupChange(e.target.value)}
-                            list="group-suggestions"
-                            className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                            placeholder="Enter group name..."
-                        />
-                        <datalist id="group-suggestions">
-                            {existingGroups.map(g => (
-                                <option key={g} value={g}/>
-                            ))}
-                        </datalist>
-                        <p className="text-xs text-gray-400 mt-1">Shapes in the same group get the same color</p>
-                        {group && (
-                            <div className="mt-2 flex items-center gap-2">
-                                <div
-                                    className="w-4 h-4 rounded border border-gray-300"
-                                    style={{backgroundColor: getGroupColor(group)}}
-                                />
-                                <span className="text-xs text-gray-600">Group color</span>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Rotation */}
-                    <div>
-                        <div className="flex items-center justify-between mb-1">
-                            <label className="text-xs font-bold text-gray-500 uppercase">
-                                Rotation: {rotation}°
-                            </label>
-                            <button
-                                onClick={() => {
-                                    setRotation(0);
-                                    applyTransformations({rotation: 0});
-                                }}
-                                className="text-xs text-blue-600 hover:text-blue-800"
-                            >
-                                Reset
-                            </button>
-                        </div>
-                        <input
-                            type="range"
-                            min="0"
-                            max="360"
-                            step="15"
-                            value={rotation}
-                            onChange={(e) => {
-                                const newRotation = parseInt(e.target.value);
-                                setRotation(newRotation);
-                                applyTransformations({rotation: newRotation});
-                            }}
-                            className="w-full accent-blue-600"
-                        />
-                        <div className="flex justify-between text-xs text-gray-400 mt-1">
-                            <span>0°</span>
-                            <span>360°</span>
-                        </div>
-                    </div>
-
-                    {/* Delete Button */}
-                    <div className="pt-4 border-t">
-                        <button
-                            onClick={() => {
-                                if (confirm('Delete this shape?')) {
-                                    onDelete();
-                                    onClose();
-                                }
-                            }}
-                            className="w-full flex items-center justify-center gap-2 bg-red-500 text-white p-2 rounded hover:bg-red-600 font-medium"
-                        >
-                            <Trash2 size={16}/> Delete Shape
-                        </button>
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-const PDFPageManager = ({
-                            numPages, activePageIndex, onPageChange, onRemovePage
-                        }: {
-    numPages: number,
-    activePageIndex: number,
-    onPageChange: (index: number) => void,
-    onRemovePage: (index: number) => void
-}) => {
-    const [showManager, setShowManager] = useState(false);
-
-    if (numPages <= 1) return null;
-
-    return (
-        <div className="relative">
-            <button
-                onClick={() => setShowManager(!showManager)}
-                className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-blue-600"
-                title="Manage Pages"
-            >
-                <FileX size={16}/>
-            </button>
-
-            {showManager && (
-                <div className="absolute top-full right-0 mt-1 bg-white border rounded-lg shadow-lg z-50 w-64 p-3">
-                    <h3 className="font-bold text-sm mb-2">PDF Pages</h3>
-                    <div className="space-y-1 max-h-48 overflow-y-auto">
-                        {Array.from({length: numPages}, (_, i) => (
-                            <div key={i}
-                                 className={`flex items-center justify-between p-2 rounded ${i === activePageIndex ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}>
-                                <button
-                                    onClick={() => onPageChange(i)}
-                                    className="flex-1 text-left text-sm"
-                                >
-                                    Page {i + 1} {i === activePageIndex && '(Current)'}
-                                </button>
-                                <button
-                                    onClick={() => onRemovePage(i)}
-                                    className="p-1 text-red-500 hover:bg-red-50 rounded"
-                                    title="Remove from takeoff"
-                                >
-                                    <X size={12}/>
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                    <button
-                        onClick={() => setShowManager(false)}
-                        className="w-full mt-2 p-1 text-xs text-gray-500 hover:bg-gray-100 rounded"
-                    >
-                        Close
-                    </button>
-                </div>
-            )}
-        </div>
-    );
-};
-
-// Group colours
-const GROUP_COLORS = [
-    '#ef4444', // red
-    '#10b981', // green
-    '#8b5cf6', // purple
-    '#f97316', // orange
-    '#0ea5e9', // sky
-    '#ec4899', // pink
-    '#84cc16', // lime
-    '#f59e0b', // amber
-];
-
-const getGroupColor = (group: string | undefined): string => {
-    if (!group) return '#2563eb'; // default blue
-    let hash = 0;
-    for (let i = 0; i < group.length; i++) {
-        hash = group.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return GROUP_COLORS[Math.abs(hash) % GROUP_COLORS.length];
-};
-
-//Helper: Format Distance
-const getFormattedDistance = (p1: Point, p2: Point, scale: number) => {
-    const px = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-    const feetDecimal = px / scale;
-    const feet = Math.floor(feetDecimal);
-    const inches = Math.round((feetDecimal - feet) * 12);
-    return `${feet}' ${inches}"`;
-};
-
+import { InputModal } from './canvas/InputModal';
+import { ContextMenu, EdgeContextMenu } from './canvas/ContextMenus';
+import { FloatingDrawingPanel } from './canvas/FloatingDrawingPanel';
+import { FloatingPropertiesPanel } from './canvas/FloatingPropertiesPanel';
+import { PDFPageManager } from './canvas/PDFPageManager';
+import {
+    getFormattedDistance, getGroupColor, MAX_ZOOM, MIN_ZOOM, RENDER_THROTTLE, ZOOM_INCREMENT, generateLinePath
+} from './canvas/utils';
 
 const Canvas = () => {
     const {
         pdfFile, measurements, activeTool, activePageIndex, isCalibrating, activeWizardTool,
-        addMeasurement, updateMeasurement, deleteMeasurement, deletePoint, insertPointAfter,
+        addMeasurement, updateMeasurement, deleteMeasurement, deletePoint: storeDeletePoint, insertPointAfter,
         setScale, setIsCalibrating, setPageIndex, zoom, pan, setViewport, setTool, scale,
-        setMeasurements, undo, redo
+        setMeasurements, undo, redo, groupColors, setGroupColor,
+        pageScales, setPageScale
     } = useStore();
 
+    // Local points state for the currently being drawn NEW measurement
     const [points, setPoints] = useState<Point[]>([]);
     const viewportRef = useRef<HTMLDivElement>(null);
     const [numPages, setNumPages] = useState<number>(0);
@@ -804,6 +44,9 @@ const Canvas = () => {
     const [shapeStartPos, setShapeStartPos] = useState<Point | null>(null);
     const [currentMousePos, setCurrentMousePos] = useState<Point | null>(null);
 
+    // Branching State - tracks which point of which measurement we are actively extending
+    const [branchingFrom, setBranchingFrom] = useState<{ id: string, pIdx: number } | null>(null);
+
     // Double Click Detection State
     const [lastClickTime, setLastClickTime] = useState(0);
     const [lastClickId, setLastClickId] = useState<string | null>(null);
@@ -812,7 +55,12 @@ const Canvas = () => {
     // UI State
     const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
     const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false);
-    const [propertiesPanelMeasurement, setPropertiesPanelMeasurement] = useState<any>(null);
+
+    // Derived active measurement for properties panel
+    const selectedMeasurementData = useMemo(() =>
+            measurements.find(m => m.id === selectedShape),
+        [measurements, selectedShape]
+    );
 
     // Modal State
     const [modalType, setModalType] = useState<'name' | 'calibration' | null>(null);
@@ -821,12 +69,17 @@ const Canvas = () => {
     const [contextMenu, setContextMenu] = useState<any>(null);
     const [edgeContextMenu, setEdgeContextMenu] = useState<any>(null);
 
+    const [isIndependentScale, setIsIndependentScale] = useState(false);
+
     // Performance optimization state
     const [isRendering, setIsRendering] = useState(false);
     const [lastRenderTime, setLastRenderTime] = useState(0);
     const renderTimeoutRef = useRef<NodeJS.Timeout>();
 
-    // --- Undo/Redo Key Listener ---
+    const effectiveScale = pageScales[activePageIndex] || scale;
+    const isCurrentPageIndependent = pageScales[activePageIndex] !== undefined;
+
+    //  Undo/Redo Key Listener
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.ctrlKey || e.metaKey) {
@@ -853,32 +106,29 @@ const Canvas = () => {
         setSelectedShape(null);
         setIsPropertiesPanelOpen(false);
         setCurrentMousePos(null);
+        setBranchingFrom(null);
     };
 
     const handleCalibrate = () => {
         setIsCalibrating(!isCalibrating);
         setPoints([]);
+        setBranchingFrom(null);
     };
 
     const handleOpenProperties = (measurementId: string) => {
-        const measurement = measurements.find(m => m.id === measurementId);
-        if (measurement) {
-            setPropertiesPanelMeasurement(measurement);
-            setIsPropertiesPanelOpen(true);
-            setSelectedShape(measurementId);
-        }
+        setSelectedShape(measurementId);
+        setIsPropertiesPanelOpen(true);
     };
 
     const handleToggleMeasurementVisibility = (measurementId: string) => {
         const measurement = measurements.find(m => m.id === measurementId);
         if (measurement) {
-            updateMeasurement(measurementId, {hidden: !measurement.hidden});
+            updateMeasurement(measurementId, { hidden: !measurement.hidden });
         }
     };
 
     const handleReorderMeasurements = (newGroupOrder: string[]) => {
-        // Reconstruct measurement array based on new group order
-        const currentPageItems: Measurement[] = [];
+        const currentPageItems: any[] = [];
         newGroupOrder.forEach(groupName => {
             const items = measurements.filter(m =>
                 m.pageIndex === activePageIndex && (m.group || 'Ungrouped') === groupName
@@ -890,8 +140,37 @@ const Canvas = () => {
         setMeasurements([...otherPageItems, ...currentPageItems]);
     };
 
+    // Custom delete point that handles graph topology
+    const handleGraphDeletePoint = (mId: string, pIdx: number) => {
+        const m = measurements.find(meas => meas.id === mId);
+        if(!m) return;
+
+        // If it's a simple shape/line without connections, use store default
+        const isGraph = m.points.some(p => p.connectsTo && p.connectsTo.length > 0);
+        if (!isGraph) {
+            storeDeletePoint(mId, pIdx);
+            return;
+        }
+
+        // Logic for removing a node in the graph:
+        // 1. Remove the point from array
+        // 2. Shift all references > pIdx down by 1
+        // 3. Remove any connections pointing TO pIdx
+
+        const newPoints = m.points
+            .filter((_, idx) => idx !== pIdx) // Remove the point
+            .map(p => {
+                const newConnectsTo = (p.connectsTo || [])
+                    .filter(targetIdx => targetIdx !== pIdx) // Remove connection to deleted point
+                    .map(targetIdx => targetIdx > pIdx ? targetIdx - 1 : targetIdx); // Shift indices
+                return { ...p, connectsTo: newConnectsTo };
+            });
+
+        updateMeasurement(mId, { points: newPoints });
+    };
+
     const screenToPdf = (screenX: number, screenY: number) => {
-        if (!viewportRef.current) return {x: 0, y: 0};
+        if (!viewportRef.current) return { x: 0, y: 0 };
         const rect = viewportRef.current.getBoundingClientRect();
         return {
             x: (screenX - rect.left - pan.x) / zoom,
@@ -899,7 +178,6 @@ const Canvas = () => {
         };
     };
 
-    // Throttled viewport update for performance
     const throttledViewportUpdate = (newZoom: number, newPan: { x: number, y: number }) => {
         const now = Date.now();
         if (now - lastRenderTime < RENDER_THROTTLE) {
@@ -918,19 +196,16 @@ const Canvas = () => {
         return () => renderTimeoutRef.current && clearTimeout(renderTimeoutRef.current);
     }, []);
 
-    // Create default square for shape tool
     const createDefaultSquare = (center: Point) => {
-        const size = 100 / zoom; // Adjust size based on zoom
+        const size = 100 / zoom;
         return [
-            {x: center.x - size / 2, y: center.y - size / 2},
-            {x: center.x + size / 2, y: center.y - size / 2},
-            {x: center.x + size / 2, y: center.y + size / 2},
-            {x: center.x - size / 2, y: center.y + size / 2}
+            { x: center.x - size / 2, y: center.y - size / 2 },
+            { x: center.x + size / 2, y: center.y - size / 2 },
+            { x: center.x + size / 2, y: center.y + size / 2 },
+            { x: center.x - size / 2, y: center.y + size / 2 }
         ];
     };
 
-
-    // Check if point is inside shape
     const isPointInShape = (point: Point, shapePoints: Point[]) => {
         let inside = false;
         for (let i = 0, j = shapePoints.length - 1; i < shapePoints.length; j = i++) {
@@ -942,29 +217,59 @@ const Canvas = () => {
         return inside;
     };
 
+    const handleBranchFromPoint = (mId: string, pIdx: number) => {
+        setBranchingFrom({ id: mId, pIdx });
+        // We do NOT set tool to 'line' or clear points.
+        // We stay in 'select' mode but utilize the click handler to inject points.
+    };
+
     const handleMouseDown = (e: React.MouseEvent) => {
         if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
             e.preventDefault();
             setIsPanning(true);
-            setLastMouse({x: e.clientX, y: e.clientY});
+            setLastMouse({ x: e.clientX, y: e.clientY });
             return;
         }
 
         if (e.button === 0 && !contextMenu && !draggedVertex && !edgeContextMenu) {
-            const {x, y} = screenToPdf(e.clientX, e.clientY);
+            const { x, y } = screenToPdf(e.clientX, e.clientY);
+
+            // HANDLE BRANCHING CLICK
+            if (branchingFrom) {
+                const m = measurements.find(meas => meas.id === branchingFrom.id);
+                if (m) {
+                    const newPointIndex = m.points.length;
+                    const newPoint: Point = { x, y, connectsTo: [] };
+
+                    // Create copy of points
+                    const newPoints = [...m.points, newPoint];
+
+                    // Link the 'branchingFrom' point to this new point
+                    const parentPoint = newPoints[branchingFrom.pIdx];
+                    const existingConnections = parentPoint.connectsTo || [];
+                    newPoints[branchingFrom.pIdx] = {
+                        ...parentPoint,
+                        connectsTo: [...existingConnections, newPointIndex]
+                    };
+
+                    updateMeasurement(m.id, { points: newPoints });
+                    // Update state to extend from the newly created point
+                    setBranchingFrom({ id: m.id, pIdx: newPointIndex });
+                }
+                return;
+            }
 
             if (activeTool === 'select' && !isCalibrating) {
-                // Check if clicking on a shape
                 const clickedShape = measurements.find(m =>
                     m.pageIndex === activePageIndex &&
                     m.type === 'shape' &&
-                    isPointInShape({x, y}, m.points)
+                    isPointInShape({ x, y }, m.points)
                 );
 
                 if (clickedShape) {
                     setSelectedShape(clickedShape.id);
                     setIsDraggingShape(true);
-                    setShapeStartPos({x, y});
+                    setShapeStartPos({ x, y });
                 } else {
                     setSelectedShape(null);
                 }
@@ -972,33 +277,30 @@ const Canvas = () => {
             }
 
             if (activeTool === 'shape') {
-                const squarePoints = createDefaultSquare({x, y});
+                const squarePoints = createDefaultSquare({ x, y });
                 const finalName = activeWizardTool || 'Shape';
                 addMeasurement('shape', squarePoints, finalName);
                 setTimeout(() => {
                     const newShape = measurements[measurements.length - 1];
                     if (newShape) {
                         setSelectedShape(newShape.id);
-                        setPropertiesPanelMeasurement(newShape);
                         setIsPropertiesPanelOpen(true);
                     }
                 }, 0);
                 return;
             }
 
-            // MEASURE TOOL LOGIC
             if (activeTool === 'measure') {
                 if (points.length >= 1) {
-                    setPoints([{x, y}]);
+                    setPoints([{ x, y }]);
                 } else {
-                    // First click
-                    setPoints([{x, y}]);
+                    setPoints([{ x, y }]);
                 }
                 return;
             }
 
-            // Line tool or calibration
             if (activeTool === 'line' && points.length >= 3) {
+                // If creating a new closed loop shape automatically
                 const firstPoint = points[0];
                 const distance = Math.sqrt(Math.pow(x - firstPoint.x, 2) + Math.pow(y - firstPoint.y, 2));
                 const threshold = 15 / zoom;
@@ -1011,7 +313,6 @@ const Canvas = () => {
                         const newShape = measurements[measurements.length - 1];
                         if (newShape) {
                             setSelectedShape(newShape.id);
-                            setPropertiesPanelMeasurement(newShape);
                             setIsPropertiesPanelOpen(true);
                         }
                     }, 0);
@@ -1019,29 +320,43 @@ const Canvas = () => {
                 }
             }
 
-            const newPoints = [...points, {x, y}];
-            setPoints(newPoints);
+            // ADD POINT TO NEW LINE BEING DRAWN
+            const newPoint: Point = { x, y, connectsTo: [] };
 
-            if (isCalibrating && newPoints.length === 2) {
+            // If we have previous points, link the last one to this new one
+            let updatedPoints = [...points, newPoint];
+            if (points.length > 0) {
+                const lastIndex = points.length - 1;
+                const newIndex = points.length;
+
+                // Copy the previous point and add connection
+                updatedPoints[lastIndex] = {
+                    ...updatedPoints[lastIndex],
+                    connectsTo: [...(updatedPoints[lastIndex].connectsTo || []), newIndex]
+                };
+            }
+
+            setPoints(updatedPoints);
+
+            if (isCalibrating && updatedPoints.length === 2) {
                 setModalType('calibration');
             }
         }
     };
 
     const handleMouseMove = (e: React.MouseEvent) => {
-        const {x, y} = screenToPdf(e.clientX, e.clientY);
+        const { x, y } = screenToPdf(e.clientX, e.clientY);
 
-        // Always track current mouse pos for tool previews
-        if (activeTool === 'measure' || activeTool === 'line') {
-            setCurrentMousePos({x, y});
+        if (activeTool === 'measure' || activeTool === 'line' || branchingFrom) {
+            setCurrentMousePos({ x, y });
         }
 
         if (draggedVertex) {
             const m = measurements.find(m => m.id === draggedVertex.mId);
             if (m) {
                 const newPoints = [...m.points];
-                newPoints[draggedVertex.pIdx] = {x, y};
-                updateMeasurement(m.id, {points: newPoints});
+                newPoints[draggedVertex.pIdx] = { ...newPoints[draggedVertex.pIdx], x, y };
+                updateMeasurement(m.id, { points: newPoints });
             }
             return;
         }
@@ -1052,9 +367,9 @@ const Canvas = () => {
 
             const shape = measurements.find(m => m.id === selectedShape);
             if (shape) {
-                const newPoints = shape.points.map(p => ({x: p.x + dx, y: p.y + dy}));
-                updateMeasurement(selectedShape, {points: newPoints});
-                setShapeStartPos({x, y});
+                const newPoints = shape.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy }));
+                updateMeasurement(selectedShape, { points: newPoints });
+                setShapeStartPos({ x, y });
             }
             return;
         }
@@ -1062,8 +377,8 @@ const Canvas = () => {
         if (isPanning && lastMouse) {
             const dx = e.clientX - lastMouse.x;
             const dy = e.clientY - lastMouse.y;
-            throttledViewportUpdate(zoom, {x: pan.x + dx, y: pan.y + dy});
-            setLastMouse({x: e.clientX, y: e.clientY});
+            throttledViewportUpdate(zoom, { x: pan.x + dx, y: pan.y + dy });
+            setLastMouse({ x: e.clientX, y: e.clientY });
         }
     };
 
@@ -1082,17 +397,26 @@ const Canvas = () => {
             const newZoom = zoom + zoomFactor;
             throttledViewportUpdate(newZoom, pan);
         } else {
-            throttledViewportUpdate(zoom, {x: pan.x - e.deltaX, y: pan.y - e.deltaY});
+            throttledViewportUpdate(zoom, { x: pan.x - e.deltaX, y: pan.y - e.deltaY });
         }
     };
 
     const handleRightClickCanvas = (e: React.MouseEvent) => {
         e.preventDefault();
+
+        // Stop Branching
+        if (branchingFrom) {
+            setBranchingFrom(null);
+            return;
+        }
+
         if (isCalibrating) {
             setIsCalibrating(false);
             setPoints([]);
             return;
         }
+
+        // Finish drawing Line
         if (points.length >= 2 && activeTool === 'line') {
             const finalName = activeWizardTool || "Line";
             addMeasurement('line', points, finalName);
@@ -1100,13 +424,11 @@ const Canvas = () => {
             setTimeout(() => {
                 const newShape = measurements.find(m => m.name === finalName && m.points.length === points.length);
                 if (newShape) {
-                    setPropertiesPanelMeasurement(newShape);
-                    setIsPropertiesPanelOpen(true);
                     setSelectedShape(newShape.id);
+                    setIsPropertiesPanelOpen(true);
                 }
             }, 0);
         } else if (activeTool === 'measure') {
-            // Right click cancels measure
             setPoints([]);
         }
     };
@@ -1114,20 +436,19 @@ const Canvas = () => {
     const handlePointRightClick = (e: React.MouseEvent, mId: string, pIdx: number) => {
         e.preventDefault();
         e.stopPropagation();
-        setContextMenu({x: e.clientX, y: e.clientY, mId, pIdx});
+        setContextMenu({ x: e.clientX, y: e.clientY, mId, pIdx });
     };
 
-    // --- MANUAL DOUBLE CLICK HANDLER ---
     const handleEdgeMouseDown = (e: React.MouseEvent, mId: string, idx: number) => {
-        e.preventDefault(); // Prevent text selection
-        e.stopPropagation(); // Prevent canvas drag/selection
-
+        e.preventDefault();
+        e.stopPropagation();
+        // Graph edge selection is complex, for now we disable split-on-click for graph lines to keep it manageable
+        // Or we implement basic splitting if needed, but 'insertPointAfter' needs graph awareness.
+        // For simplicity, we fallback to standard behavior but check connectivity logic would need updates.
+        // Assuming simple behavior for now:
         const now = Date.now();
         if (lastClickId === mId && lastClickIndex === idx && now - lastClickTime < 300) {
-            const clickPoint = screenToPdf(e.clientX, e.clientY);
-            insertPointAfter(mId, idx, clickPoint);
-            setLastClickTime(0);
-            setLastClickId(null);
+            // Double click behavior - maybe disabled for graph lines for now to ensure stability
         } else {
             setLastClickTime(now);
             setLastClickId(mId);
@@ -1138,18 +459,24 @@ const Canvas = () => {
     const handleEdgeRightClick = (e: React.MouseEvent, mId: string, edgeIndex: number) => {
         e.preventDefault();
         e.stopPropagation();
-        const clickPoint = screenToPdf(e.clientX, e.clientY);
-        setEdgeContextMenu({
-            x: e.clientX,
-            y: e.clientY,
-            onAddVertex: () => insertPointAfter(mId, edgeIndex, clickPoint)
-        });
+        // Graph edges are drawn per connection. edgeIndex here is ambiguous in a graph.
+        // For now, suppress context menu on edges if graph to avoid index confusion.
+        const m = measurements.find(me => me.id === mId);
+        const isGraph = m?.points.some(p => p.connectsTo && p.connectsTo.length > 0);
+
+        if (!isGraph) {
+            const clickPoint = screenToPdf(e.clientX, e.clientY);
+            setEdgeContextMenu({
+                x: e.clientX,
+                y: e.clientY,
+                onAddVertex: () => insertPointAfter(mId, edgeIndex, clickPoint)
+            });
+        }
     };
 
     const handleRemovePage = (pageIndex: number) => {
         setRemovedPages(prev => new Set([...prev, pageIndex]));
         if (pageIndex === activePageIndex) {
-            // Move to next available page
             let nextPage = pageIndex + 1;
             while (nextPage < numPages && removedPages.has(nextPage)) {
                 nextPage++;
@@ -1166,7 +493,6 @@ const Canvas = () => {
         }
     };
 
-    // --- Modal Logic ---
     const handleModalSave = (val: string) => {
         if (modalType === 'calibration') {
             const p1 = points[0];
@@ -1174,7 +500,12 @@ const Canvas = () => {
             const pixelDist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
             const realDist = parseFloat(val);
             if (realDist > 0) {
-                setScale(pixelDist / realDist);
+                const newScale = pixelDist / realDist;
+                if (isIndependentScale) {
+                    setPageScale(activePageIndex, newScale);
+                } else {
+                    setScale(newScale);
+                }
             }
             setPoints([]);
             setIsCalibrating(false);
@@ -1184,7 +515,7 @@ const Canvas = () => {
                 addMeasurement(pendingShape.type, pendingShape.points, finalName);
                 setPendingShape(null);
             } else if (activeId) {
-                updateMeasurement(activeId, {name: finalName});
+                updateMeasurement(activeId, { name: finalName });
             }
         }
         setModalType(null);
@@ -1201,7 +532,15 @@ const Canvas = () => {
         }
     };
 
-    const availablePages = Array.from({length: numPages}, (_, i) => i).filter(i => !removedPages.has(i));
+    const toggleIndependentScale = (enabled: boolean) => {
+        if (enabled) {
+            setPageScale(activePageIndex, scale);
+        } else {
+            setPageScale(activePageIndex, undefined);
+        }
+    };
+
+    const availablePages = Array.from({ length: numPages }, (_, i) => i).filter(i => !removedPages.has(i));
 
     return (
         <div className="flex-1 relative bg-gray-900 overflow-hidden flex flex-col">
@@ -1212,6 +551,10 @@ const Canvas = () => {
                 initialValue={modalType === 'name' && activeId ? measurements.find(m => m.id === activeId)?.name || "" : ""}
                 onSave={handleModalSave}
                 onCancel={handleModalCancel}
+                showCheckbox={modalType === 'calibration'}
+                checkboxLabel="This Page Only"
+                checkboxValue={isIndependentScale}
+                onCheckboxChange={setIsIndependentScale}
             />
 
             {contextMenu && (
@@ -1221,7 +564,7 @@ const Canvas = () => {
                     onClose={() => setContextMenu(null)}
                     measurement={measurements.find(m => m.id === contextMenu.mId)}
                     actions={{
-                        deletePoint: () => deletePoint(contextMenu.mId, contextMenu.pIdx),
+                        deletePoint: () => handleGraphDeletePoint(contextMenu.mId, contextMenu.pIdx),
                         addPoint: () => {
                             insertPointAfter(contextMenu.mId, contextMenu.pIdx, undefined);
                         },
@@ -1229,7 +572,8 @@ const Canvas = () => {
                             setActiveId(contextMenu.mId);
                             setModalType('name');
                         },
-                        deleteShape: () => deleteMeasurement(contextMenu.mId)
+                        deleteShape: () => deleteMeasurement(contextMenu.mId),
+                        branch: () => handleBranchFromPoint(contextMenu.mId, contextMenu.pIdx)
                     }}
                 />
             )}
@@ -1243,7 +587,6 @@ const Canvas = () => {
                 />
             )}
 
-            {/* Floating Drawing Panel */}
             <FloatingDrawingPanel
                 activeTool={activeTool}
                 onToolChange={handleToolChange}
@@ -1257,27 +600,27 @@ const Canvas = () => {
                 onOpenProperties={handleOpenProperties}
                 onUpdateMeasurement={updateMeasurement}
                 onReorderMeasurements={handleReorderMeasurements}
+                groupColors={groupColors}
             />
 
-            {/* Floating Properties Panel */}
-            {isPropertiesPanelOpen && propertiesPanelMeasurement && (
+            {isPropertiesPanelOpen && selectedMeasurementData && (
                 <FloatingPropertiesPanel
-                    measurement={propertiesPanelMeasurement}
+                    measurement={selectedMeasurementData}
                     onUpdate={(updates) => {
-                        updateMeasurement(propertiesPanelMeasurement.id, updates);
-                        setPropertiesPanelMeasurement((prev: any) => ({...prev, ...updates}));
+                        updateMeasurement(selectedMeasurementData.id, updates);
                     }}
                     onDelete={() => {
-                        deleteMeasurement(propertiesPanelMeasurement.id);
+                        deleteMeasurement(selectedMeasurementData.id);
                         setIsPropertiesPanelOpen(false);
                         setSelectedShape(null);
                     }}
                     onClose={() => {
                         setIsPropertiesPanelOpen(false);
-                        setPropertiesPanelMeasurement(null);
                     }}
                     isOpen={isPropertiesPanelOpen}
                     allMeasurements={measurements}
+                    groupColors={groupColors}
+                    onSetGroupColor={setGroupColor}
                 />
             )}
 
@@ -1288,27 +631,36 @@ const Canvas = () => {
 
                     <button
                         onClick={handleCalibrate}
-                        className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${
-                            isCalibrating
-                                ? 'bg-yellow-100 text-yellow-700 border border-yellow-200 animate-pulse'
-                                : 'bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200'
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${isCalibrating
+                            ? 'bg-yellow-100 text-yellow-700 border border-yellow-200 animate-pulse'
+                            : 'bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200'
                         }`}
                     >
-                        <Ruler size={14}/>
+                        <Ruler size={14} />
                         {isCalibrating ? 'Calibrating...' : 'Calibrate'}
                     </button>
 
-                    {scale > 1 && (
-                        <div
-                            className="flex items-center gap-1 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold">
-                            <Check size={10}/> Scaled
+                    <div className="flex items-center gap-2">
+                        {isCurrentPageIndependent ? (
+                            <div className="flex items-center gap-1 bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs font-bold cursor-pointer hover:bg-purple-200" onClick={() => toggleIndependentScale(false)} title="Click to use Global Scale">
+                                <Check size={10} /> Pg Scale
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-1 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold cursor-pointer hover:bg-green-200" onClick={() => toggleIndependentScale(true)} title="Click to make Page Scale Independent">
+                                <Check size={10} /> Global
+                            </div>
+                        )}
+                    </div>
+                    {branchingFrom && (
+                        <div className="flex items-center gap-1 bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold animate-pulse">
+                            Branching Active - Click to Extend
                         </div>
                     )}
 
-                    {selectedShape && (
+                    {selectedShape && !branchingFrom && (
                         <div
                             className="flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">
-                            <Square size={10}/> Shape Selected
+                            <Square size={10} /> Shape Selected
                         </div>
                     )}
                 </div>
@@ -1322,11 +674,11 @@ const Canvas = () => {
                         disabled={availablePages.indexOf(activePageIndex) <= 0}
                         className="p-1 hover:bg-white rounded shadow-sm disabled:opacity-30 disabled:shadow-none transition-all"
                     >
-                        <ChevronLeft size={18}/>
+                        <ChevronLeft size={18} />
                     </button>
                     <span className="text-sm font-mono font-medium min-w-[80px] text-center">
-              Pg {activePageIndex + 1} / {numPages || '-'}
-            </span>
+                        Pg {activePageIndex + 1} / {numPages || '-'}
+                    </span>
                     <button
                         onClick={() => {
                             const currentIndex = availablePages.indexOf(activePageIndex);
@@ -1335,7 +687,7 @@ const Canvas = () => {
                         disabled={availablePages.indexOf(activePageIndex) >= availablePages.length - 1}
                         className="p-1 hover:bg-white rounded shadow-sm disabled:opacity-30 disabled:shadow-none transition-all"
                     >
-                        <ChevronRight size={18}/>
+                        <ChevronRight size={18} />
                     </button>
                 </div>
 
@@ -1346,7 +698,7 @@ const Canvas = () => {
                             className="p-1 hover:bg-white rounded shadow-sm transition-all"
                             title="Zoom Out"
                         >
-                            <Minus size={16}/>
+                            <Minus size={16} />
                         </button>
 
                         <div className="flex items-center gap-1 px-2">
@@ -1361,8 +713,8 @@ const Canvas = () => {
                                 title="Zoom Slider"
                             />
                             <span className="w-12 text-center text-xs font-mono font-bold text-gray-600">
-                  {Math.round(zoom * 100)}%
-                </span>
+                                {Math.round(zoom * 100)}%
+                            </span>
                         </div>
 
                         <button
@@ -1370,7 +722,7 @@ const Canvas = () => {
                             className="p-1 hover:bg-white rounded shadow-sm transition-all"
                             title="Zoom In"
                         >
-                            <Plus size={16}/>
+                            <Plus size={16} />
                         </button>
                     </div>
 
@@ -1390,13 +742,13 @@ const Canvas = () => {
                                 const centerX = (containerWidth - pageWidth * fitZoom) / 2;
                                 const centerY = (containerHeight - pageHeight * fitZoom) / 2;
 
-                                throttledViewportUpdate(fitZoom, {x: centerX, y: centerY});
+                                throttledViewportUpdate(fitZoom, { x: centerX, y: centerY });
                             }
                         }}
                         className="p-1.5 hover:bg-gray-100 rounded text-gray-500 hover:text-blue-600"
                         title="Fit to Page"
                     >
-                        <RotateCcw size={18}/>
+                        <RotateCcw size={18} />
                     </button>
 
                     <PDFPageManager
@@ -1416,7 +768,7 @@ const Canvas = () => {
                 onMouseUp={handleMouseUp}
                 onContextMenu={handleRightClickCanvas}
                 onWheel={handleWheel}
-                style={{cursor: isPanning ? 'grabbing' : (activeTool !== 'select' ? 'crosshair' : 'default')}}
+                style={{ cursor: isPanning ? 'grabbing' : (activeTool !== 'select' ? 'crosshair' : 'default') }}
             >
                 <div
                     className="origin-top-left will-change-transform"
@@ -1429,7 +781,7 @@ const Canvas = () => {
                         <div className="relative inline-block bg-white shadow-2xl">
                             <Document
                                 file={pdfFile}
-                                onLoadSuccess={({numPages}) => setNumPages(numPages)}
+                                onLoadSuccess={({ numPages }) => setNumPages(numPages)}
                                 loading={<div
                                     className="w-[800px] h-[1000px] flex items-center justify-center text-gray-400">Loading
                                     PDF...</div>}
@@ -1446,84 +798,116 @@ const Canvas = () => {
                             </Document>
 
                             <svg className="absolute inset-0 w-full h-full">
-                                {measurements.filter(m => m.pageIndex === activePageIndex && !m.hidden).map(m => (
-                                    <g key={m.id}>
-                                        {m.type === 'shape' ? (
-                                            <>
-                                                <polygon
-                                                    points={m.points.map(p => `${p.x},${p.y}`).join(' ')}
-                                                    fill={(() => {
-                                                        const color = getGroupColor(m.group);
-                                                        const opacity = selectedShape === m.id ? '0.4' : '0.3';
-                                                        const r = parseInt(color.slice(1, 3), 16);
-                                                        const g = parseInt(color.slice(3, 5), 16);
-                                                        const b = parseInt(color.slice(5, 7), 16);
-                                                        return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-                                                    })()}
-                                                    stroke={selectedShape === m.id ? "#3b82f6" : getGroupColor(m.group)}
-                                                    strokeWidth={Math.max(1, (selectedShape === m.id ? 3 : 2) / zoom)}
-                                                    vectorEffect="non-scaling-stroke"
-                                                    className="cursor-pointer"
-                                                    onClick={(e) => {
+                                {measurements.filter(m => m.pageIndex === activePageIndex && !m.hidden).map(m => {
+                                    const color = getGroupColor(m.group, groupColors);
+                                    // Check if this measurement uses graph logic
+                                    const isGraph = m.points.some(p => p.connectsTo && p.connectsTo.length > 0);
+
+                                    return (
+                                        <g key={m.id}>
+                                            {m.type === 'shape' ? (
+                                                <>
+                                                    <polygon
+                                                        points={m.points.map(p => `${p.x},${p.y}`).join(' ')}
+                                                        fill={(() => {
+                                                            const opacity = selectedShape === m.id ? '0.4' : '0.3';
+                                                            const r = parseInt(color.slice(1, 3), 16);
+                                                            const g = parseInt(color.slice(3, 5), 16);
+                                                            const b = parseInt(color.slice(5, 7), 16);
+                                                            return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+                                                        })()}
+                                                        stroke={selectedShape === m.id ? "#3b82f6" : color}
+                                                        strokeWidth={Math.max(1, (selectedShape === m.id ? 3 : 2) / zoom)}
+                                                        vectorEffect="non-scaling-stroke"
+                                                        className="cursor-pointer"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (activeTool === 'select') setSelectedShape(m.id);
+                                                        }}
+                                                    />
+
+                                                    {m.points.map((p, idx) => {
+                                                        const nextP = m.points[(idx + 1) % m.points.length];
+                                                        return (
+                                                            <line
+                                                                key={`edge-${idx}`}
+                                                                x1={p.x} y1={p.y}
+                                                                x2={nextP.x} y2={nextP.y}
+                                                                stroke="transparent"
+                                                                strokeWidth={Math.max(8, 12 / zoom)}
+                                                                className="cursor-pointer"
+                                                                onMouseDown={(e) => handleEdgeMouseDown(e, m.id, idx)}
+                                                                onContextMenu={(e) => handleEdgeRightClick(e, m.id, idx)}
+                                                                vectorEffect="non-scaling-stroke"
+                                                                style={{ pointerEvents: 'all' }}
+                                                            />
+                                                        );
+                                                    })}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <path
+                                                        d={generateLinePath(m.points)}
+                                                        fill="none"
+                                                        stroke={selectedShape === m.id ? "#3b82f6" : "#ef4444"}
+                                                        strokeWidth={Math.max(1, (selectedShape === m.id ? 4 : 3) / zoom)}
+                                                        vectorEffect="non-scaling-stroke"
+                                                        className="cursor-pointer"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (activeTool === 'select') setSelectedShape(m.id);
+                                                        }}
+                                                    />
+
+                                                    {/* If it's a legacy linear line, draw edge handles. If Graph, skip for now. */}
+                                                    {!isGraph && m.points.map((p, idx) => {
+                                                        if (idx === m.points.length - 1) return null;
+                                                        const nextP = m.points[idx + 1];
+                                                        return (
+                                                            <line
+                                                                key={`edge-${idx}`}
+                                                                x1={p.x} y1={p.y}
+                                                                x2={nextP.x} y2={nextP.y}
+                                                                stroke="transparent"
+                                                                strokeWidth={Math.max(8, 12 / zoom)}
+                                                                className="cursor-pointer"
+                                                                onMouseDown={(e) => handleEdgeMouseDown(e, m.id, idx)}
+                                                                onContextMenu={(e) => handleEdgeRightClick(e, m.id, idx)}
+                                                                vectorEffect="non-scaling-stroke"
+                                                                style={{ pointerEvents: 'all' }}
+                                                            />
+                                                        );
+                                                    })}
+                                                </>
+                                            )}
+
+                                            {m.points.map((p, idx) => (
+                                                <circle
+                                                    key={idx}
+                                                    cx={p.x}
+                                                    cy={p.y}
+                                                    r={Math.max(1.5, 2.5 / zoom)}
+                                                    fill="white"
+                                                    stroke="black"
+                                                    strokeWidth={Math.max(0.25, 0.5 / zoom)}
+                                                    className="cursor-move hover:fill-yellow-400"
+                                                    onContextMenu={(e) => handlePointRightClick(e, m.id, idx)}
+                                                    onMouseDown={(e) => {
                                                         e.stopPropagation();
-                                                        if (activeTool === 'select') setSelectedShape(m.id);
+                                                        e.preventDefault();
+                                                        setDraggedVertex({ mId: m.id, pIdx: idx });
                                                     }}
+                                                    vectorEffect="non-scaling-stroke"
                                                 />
-
-                                                {m.points.map((p, idx) => {
-                                                    const nextP = m.points[(idx + 1) % m.points.length];
-                                                    return (
-                                                        <line
-                                                            key={`edge-${idx}`}
-                                                            x1={p.x} y1={p.y}
-                                                            x2={nextP.x} y2={nextP.y}
-                                                            stroke="transparent"
-                                                            strokeWidth={Math.max(8, 12 / zoom)}
-                                                            className="cursor-pointer"
-                                                            onMouseDown={(e) => handleEdgeMouseDown(e, m.id, idx)}
-                                                            onContextMenu={(e) => handleEdgeRightClick(e, m.id, idx)}
-                                                            vectorEffect="non-scaling-stroke"
-                                                            style={{ pointerEvents: 'all' }}
-                                                        />
-                                                    );
-                                                })}
-                                            </>
-                                        ) : (
-                                            <polyline
-                                                points={m.points.map(p => `${p.x},${p.y}`).join(' ')}
-                                                fill="none"
-                                                stroke="#ef4444"
-                                                strokeWidth={Math.max(1, 3 / zoom)}
-                                                vectorEffect="non-scaling-stroke"
-                                            />
-                                        )}
-
-                                        {m.points.map((p, idx) => (
-                                            <circle
-                                                key={idx}
-                                                cx={p.x}
-                                                cy={p.y}
-                                                r={Math.max(1.5, 2.5 / zoom)}
-                                                fill="white"
-                                                stroke="black"
-                                                strokeWidth={Math.max(0.25, 0.5 / zoom)}
-                                                className="cursor-move hover:fill-yellow-400"
-                                                onContextMenu={(e) => handlePointRightClick(e, m.id, idx)}
-                                                onMouseDown={(e) => {
-                                                    e.stopPropagation();
-                                                    e.preventDefault();
-                                                    setDraggedVertex({mId: m.id, pIdx: idx});
-                                                }}
-                                                vectorEffect="non-scaling-stroke"
-                                            />
-                                        ))}
-                                    </g>
-                                ))}
+                                            ))}
+                                        </g>
+                                    );
+                                })}
 
                                 {points.length > 0 && (
                                     <g>
-                                        <polyline
-                                            points={points.map(p => `${p.x},${p.y}`).join(' ')}
+                                        <path
+                                            d={generateLinePath(points)}
                                             fill="none"
                                             stroke={isCalibrating ? "#facc15" : (activeTool === 'measure' ? "#f97316" : "#000")}
                                             strokeDasharray={activeTool === 'measure' ? "4,4" : "5,5"}
@@ -1546,56 +930,65 @@ const Canvas = () => {
                                     </g>
                                 )}
 
-                                {/* Measure Tool - Active Line Preview */}
-                                {activeTool === 'measure' && points.length === 1 && currentMousePos && (
+                                {/* Floating Ghost Line for Drawing */}
+                                {(activeTool === 'measure' || activeTool === 'line' || branchingFrom) && currentMousePos && (
                                     <g pointerEvents="none">
-                                        <line
-                                            x1={points[0].x} y1={points[0].y}
-                                            x2={currentMousePos.x} y2={currentMousePos.y}
-                                            stroke="#f97316"
-                                            strokeWidth={Math.max(1.5, 2 / zoom)}
-                                            strokeDasharray="4,4"
-                                            vectorEffect="non-scaling-stroke"
-                                        />
-                                        {/* Distance Label */}
-                                        <foreignObject
-                                            x={(points[0].x + currentMousePos.x) / 2 - 40 / zoom}
-                                            y={(points[0].y + currentMousePos.y) / 2 - 12 / zoom}
-                                            width={80 / zoom}
-                                            height={24 / zoom}
-                                        >
-                                            <div className="flex items-center justify-center h-full">
-                                                <span className="bg-orange-500 text-white px-2 py-0.5 rounded shadow text-xs font-bold whitespace-nowrap" style={{fontSize: `${12/zoom}px`}}>
-                                                    {getFormattedDistance(points[0], currentMousePos, scale)}
-                                                </span>
-                                            </div>
-                                        </foreignObject>
-                                    </g>
-                                )}
+                                        {/* If branching, show line from the active branch point */}
+                                        {branchingFrom && (
+                                            (() => {
+                                                const m = measurements.find(meas => meas.id === branchingFrom.id);
+                                                const startP = m?.points[branchingFrom.pIdx];
+                                                if (startP) return (
+                                                    <line
+                                                        x1={startP.x} y1={startP.y}
+                                                        x2={currentMousePos.x} y2={currentMousePos.y}
+                                                        stroke="#000"
+                                                        strokeDasharray="5,5"
+                                                        strokeWidth={Math.max(1, 2 / zoom)}
+                                                        vectorEffect="non-scaling-stroke"
+                                                    />
+                                                );
+                                            })()
+                                        )}
+                                        {/* If normal drawing, show line from last point */}
+                                        {!branchingFrom && points.length > 0 && (
+                                            <line
+                                                x1={points[points.length - 1].x} y1={points[points.length - 1].y}
+                                                x2={currentMousePos.x} y2={currentMousePos.y}
+                                                stroke={activeTool === 'measure' ? "#f97316" : "#000"}
+                                                strokeDasharray="4,4"
+                                                strokeWidth={Math.max(1.5, 2 / zoom)}
+                                                vectorEffect="non-scaling-stroke"
+                                            />
+                                        )}
 
-                                {/* Measure Tool - Completed Line (Temporary) */}
-                                {activeTool === 'measure' && points.length === 2 && (
-                                    <g pointerEvents="none">
-                                        <line
-                                            x1={points[0].x} y1={points[0].y}
-                                            x2={points[1].x} y2={points[1].y}
-                                            stroke="#f97316"
-                                            strokeWidth={Math.max(1.5, 2 / zoom)}
-                                            strokeDasharray="4,4"
-                                            vectorEffect="non-scaling-stroke"
-                                        />
-                                        <foreignObject
-                                            x={(points[0].x + points[1].x) / 2 - 40 / zoom}
-                                            y={(points[0].y + points[1].y) / 2 - 12 / zoom}
-                                            width={80 / zoom}
-                                            height={24 / zoom}
-                                        >
-                                            <div className="flex items-center justify-center h-full">
-                                                <span className="bg-orange-500 text-white px-2 py-0.5 rounded shadow text-xs font-bold whitespace-nowrap" style={{fontSize: `${12/zoom}px`}}>
-                                                    {getFormattedDistance(points[0], points[1], scale)}
-                                                </span>
-                                            </div>
-                                        </foreignObject>
+                                        {/* Text Label Logic */}
+                                        {(() => {
+                                            let startP = null;
+                                            if (branchingFrom) {
+                                                const m = measurements.find(meas => meas.id === branchingFrom.id);
+                                                startP = m?.points[branchingFrom.pIdx];
+                                            } else if (points.length > 0) {
+                                                startP = points[points.length - 1];
+                                            }
+
+                                            if (startP) {
+                                                return (
+                                                    <foreignObject
+                                                        x={(startP.x + currentMousePos.x) / 2 - 40 / zoom}
+                                                        y={(startP.y + currentMousePos.y) / 2 - 12 / zoom}
+                                                        width={80 / zoom}
+                                                        height={24 / zoom}
+                                                    >
+                                                        <div className="flex items-center justify-center h-full">
+                                                            <span className="bg-orange-500 text-white px-2 py-0.5 rounded shadow text-xs font-bold whitespace-nowrap" style={{ fontSize: `${12 / zoom}px` }}>
+                                                                {getFormattedDistance(startP, currentMousePos, effectiveScale)}
+                                                            </span>
+                                                        </div>
+                                                    </foreignObject>
+                                                );
+                                            }
+                                        })()}
                                     </g>
                                 )}
                             </svg>
@@ -1606,7 +999,7 @@ const Canvas = () => {
                         <div
                             className="w-[800px] h-[1000px] flex items-center justify-center text-gray-400 bg-gray-100 border-2 border-dashed border-gray-300">
                             <div className="text-center">
-                                <FileX size={48} className="mx-auto mb-2 opacity-50"/>
+                                <FileX size={48} className="mx-auto mb-2 opacity-50" />
                                 <div>Page {activePageIndex + 1} removed from takeoff</div>
                             </div>
                         </div>
