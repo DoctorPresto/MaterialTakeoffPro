@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { CreditCard as Edit3, PlusCircle, Trash2, X, GitFork } from 'lucide-react';
+import {useEffect} from 'react';
+import {CreditCard as Edit3, GitFork, PlusCircle, Spline, Trash2, X} from 'lucide-react';
 
 export const ContextMenu = ({
                                 x, y, onClose, measurement, actions
@@ -38,7 +38,6 @@ export const ContextMenu = ({
 
             <div className="h-[1px] bg-gray-100 my-1"></div>
 
-            {/* This is the Branch Line option */}
             <button onClick={() => {
                 actions.branch();
                 onClose();
@@ -72,9 +71,9 @@ export const ContextMenu = ({
 };
 
 export const EdgeContextMenu = ({
-                                    x, y, onClose, onAddVertex
+                                    x, y, onClose, onAddVertex, onConvertToCurve
                                 }: {
-    x: number, y: number, onClose: () => void, onAddVertex: () => void
+    x: number, y: number, onClose: () => void, onAddVertex: () => void, onConvertToCurve?: () => void
 }) => {
     useEffect(() => {
         const handleOutside = () => onClose();
@@ -94,6 +93,15 @@ export const EdgeContextMenu = ({
             }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm flex gap-2 items-center text-blue-600">
                 <PlusCircle size={14} /> Add Vertex Here
             </button>
+
+            {onConvertToCurve && (
+                <button onClick={() => {
+                    onConvertToCurve();
+                    onClose();
+                }} className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm flex gap-2 items-center text-purple-600">
+                    <Spline size={14} /> Convert to Curve
+                </button>
+            )}
         </div>
     );
 };

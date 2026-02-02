@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
-import { useStore } from '../store';
-import { Settings, Eye, EyeOff, Trash2, ChevronDown, ChevronRight, GripVertical } from 'lucide-react';
-import { Measurement } from '../types';
+import React, {useMemo, useState} from 'react';
+import {useStore} from '../store';
+import {ChevronDown, ChevronRight, Eye, EyeOff, GripVertical, Settings, Trash2} from 'lucide-react';
+import {Measurement} from '../types';
 
 interface MeasurementItemProps {
     measurement: Measurement;

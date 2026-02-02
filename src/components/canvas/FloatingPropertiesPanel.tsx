@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
-import { ChevronDown, ChevronUp, Move, Palette, Trash2, X } from 'lucide-react';
-import { Point } from '../../types';
-import { getGroupColor } from './utils';
-import { useDraggable } from '../../hooks/useDraggable';
+import {useEffect, useMemo, useState} from 'react';
+import {ChevronDown, ChevronUp, Move, Palette, Trash2, X} from 'lucide-react';
+import {Point} from '../../types';
+import {getGroupColor} from './utils';
+import {useDraggable} from '../../hooks/useDraggable';
 
 export const FloatingPropertiesPanel = ({
                                             measurement, onUpdate, onDelete, onClose, isOpen, allMeasurements, groupColors, onSetGroupColor
@@ -22,6 +22,10 @@ export const FloatingPropertiesPanel = ({
     const [name, setName] = useState(measurement.name || '');
     const [group, setGroup] = useState(measurement.group || '');
     const [rotation, setRotation] = useState(measurement.rotation || 0);
+    const [pitch, setPitch] = useState(measurement.pitch || 0);
+
+    // Labels State
+    const [labels, setLabels] = useState(measurement.labels || {});
 
     const currentColor = getGroupColor(group, groupColors);
 
@@ -39,6 +43,8 @@ export const FloatingPropertiesPanel = ({
         setName(measurement.name || '');
         setGroup(measurement.group || '');
         setRotation(measurement.rotation || 0);
+        setPitch(measurement.pitch || 0);
+        setLabels(measurement.labels || {});
     }, [measurement]);
 
     const handleNameChange = (value: string) => {
@@ -49,6 +55,17 @@ export const FloatingPropertiesPanel = ({
     const handleGroupChange = (value: string) => {
         setGroup(value);
         onUpdate({ group: value });
+    };
+
+    const handlePitchChange = (value: number) => {
+        setPitch(value);
+        onUpdate({ pitch: value });
+    };
+
+    const toggleLabel = (key: keyof typeof labels) => {
+        const newLabels = { ...labels, [key]: !labels[key] };
+        setLabels(newLabels);
+        onUpdate({ labels: newLabels });
     };
 
     const applyTransformations = (updates: any) => {
@@ -110,6 +127,7 @@ export const FloatingPropertiesPanel = ({
 
             {!isCollapsed && (
                 <div className="p-4 space-y-4 max-h-96 overflow-y-auto">
+                    {/* Basic Info */}
                     <div>
                         <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Name</label>
                         <input
@@ -155,9 +173,51 @@ export const FloatingPropertiesPanel = ({
                                 <option key={g} value={g} />
                             ))}
                         </datalist>
-                        <p className="text-xs text-gray-400 mt-1">Shapes in the same group share the same color.</p>
                     </div>
 
+                    {/* Geometry & Slope */}
+                    {measurement.type === 'shape' && (
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Pitch / Slope (Rise per 12")</label>
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="number"
+                                    min="0"
+                                    max="24"
+                                    value={pitch}
+                                    onChange={(e) => handlePitchChange(parseFloat(e.target.value))}
+                                    className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                />
+                                <span className="text-sm font-bold text-gray-500">/ 12</span>
+                            </div>
+                            <p className="text-xs text-gray-400 mt-1">Slope Factor: {Math.sqrt(1 + Math.pow(pitch/12, 2)).toFixed(6)}</p>
+                        </div>
+                    )}
+
+                    {/* Display Options */}
+                    <div className="bg-gray-50 p-2 rounded border">
+                        <div className="space-y-1">
+                            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" checked={labels.showTotalLength || false} onChange={() => toggleLabel('showTotalLength')} className="rounded text-blue-600"/>
+                                Show {measurement.type === 'shape' ? 'Perimeter' : 'Length'}
+                            </label>
+
+                            {/* FIX: Moved showEdgeLengths OUTSIDE the type===shape check */}
+                            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" checked={labels.showEdgeLengths || false} onChange={() => toggleLabel('showEdgeLengths')} className="rounded text-blue-600"/>
+                                Show Individual Segment Lengths
+                            </label>
+
+                            {measurement.type === 'shape' && (
+                                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                    <input type="checkbox" checked={labels.showArea || false} onChange={() => toggleLabel('showArea')} className="rounded text-blue-600"/>
+                                    Show Area
+                                </label>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Rotation */}
                     <div>
                         <div className="flex items-center justify-between mb-1">
                             <label className="text-xs font-bold text-gray-500 uppercase">
@@ -186,23 +246,19 @@ export const FloatingPropertiesPanel = ({
                             }}
                             className="w-full accent-blue-600"
                         />
-                        <div className="flex justify-between text-xs text-gray-400 mt-1">
-                            <span>0°</span>
-                            <span>360°</span>
-                        </div>
                     </div>
 
                     <div className="pt-4 border-t">
                         <button
                             onClick={() => {
-                                if (confirm('Delete this shape?')) {
+                                if (confirm('Delete this measurement?')) {
                                     onDelete();
                                     onClose();
                                 }
                             }}
                             className="w-full flex items-center justify-center gap-2 bg-red-500 text-white p-2 rounded hover:bg-red-600 font-medium"
                         >
-                            <Trash2 size={16} /> Delete Shape
+                            <Trash2 size={16} /> Delete
                         </button>
                     </div>
                 </div>

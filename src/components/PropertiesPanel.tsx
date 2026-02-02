@@ -1,6 +1,6 @@
 import React from 'react';
-import { useStore } from '../store';
-import { X, Tag, Folder } from 'lucide-react';
+import {useStore} from '../store';
+import {Folder, Tag, X} from 'lucide-react';
 
 const PropertiesPanel: React.FC = () => {
     const { 

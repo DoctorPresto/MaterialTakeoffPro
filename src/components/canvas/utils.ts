@@ -1,4 +1,4 @@
-import { Point } from '../../types';
+import {Point} from '../../types';
 
 export const ZOOM_INCREMENT = 0.05;
 export const MAX_ZOOM = 5;
@@ -35,7 +35,7 @@ export const getFormattedDistance = (p1: Point, p2: Point, scale: number) => {
     return `${feet}' ${inches}"`;
 };
 
-// Generates an SVG path string from points using graph connections if available
+// Generates an SVG path string from points using graph connections and CURVES
 export const generateLinePath = (points: Point[]) => {
     if (points.length === 0) return '';
 
@@ -49,7 +49,12 @@ export const generateLinePath = (points: Point[]) => {
                 p.connectsTo.forEach(targetIdx => {
                     const target = points[targetIdx];
                     if (target) {
-                        d += `M ${p.x},${p.y} L ${target.x},${target.y} `;
+                        d += `M ${p.x},${p.y} `;
+                        if (target.controlPoint) {
+                            d += `Q ${target.controlPoint.x},${target.controlPoint.y} ${target.x},${target.y} `;
+                        } else {
+                            d += `L ${target.x},${target.y} `;
+                        }
                     }
                 });
             }
@@ -57,9 +62,15 @@ export const generateLinePath = (points: Point[]) => {
         return d;
     }
 
-    // Fallback to sequential path for shapes or simple lines
-    return points.map((p, i) => {
-        if (i === 0) return `M ${p.x},${p.y}`;
-        return `L ${p.x},${p.y}`;
-    }).join(' ');
+    // Fallback to sequential path for simple shapes
+    let d = `M ${points[0].x},${points[0].y}`;
+    for(let i = 1; i < points.length; i++) {
+        const p = points[i];
+        if (p.controlPoint) {
+            d += ` Q ${p.controlPoint.x},${p.controlPoint.y} ${p.x},${p.y}`;
+        } else {
+            d += ` L ${p.x},${p.y}`;
+        }
+    }
+    return d;
 };

@@ -1,10 +1,17 @@
 export type Point = {
     x: number;
     y: number;
-    connectsTo?: number[]; // Indices of points this point connects to
+    connectsTo?: number[]; // Indices of connected vertices
+    controlPoint?: { x: number; y: number }; // For Bezier curves
 };
 
 export type MeasurementType = 'line' | 'shape';
+
+export interface LabelSettings {
+    showEdgeLengths?: boolean;
+    showTotalLength?: boolean; // Perimeter for shapes, Length for lines
+    showArea?: boolean;        // Shapes only
+}
 
 export interface Measurement {
     id: string;
@@ -16,6 +23,8 @@ export interface Measurement {
     group?: string;
     rotation?: number;
     hidden?: boolean;
+    pitch?: number; // Rise per 12 inches (e.g., 6 = 6/12 slope)
+    labels?: LabelSettings; // Visibility settings for measurement labels
 }
 
 export interface MaterialDef {

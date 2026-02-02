@@ -1,34 +1,105 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Document, Page, pdfjs } from 'react-pdf';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
+import {Document, Page, pdfjs} from 'react-pdf';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import {useStore} from '../store';
+import {MeasurementType, Point} from '../types';
+import {
+    Check,
+    ChevronLeft,
+    ChevronRight,
+    FileX,
+    Lock,
+    Minus,
+    Plus,
+    RotateCcw,
+    Ruler,
+    Square,
+    Unlock
+} from 'lucide-react';
+
+import {InputModal} from './canvas/InputModal';
+import {ContextMenu, EdgeContextMenu} from './canvas/ContextMenus';
+import {FloatingDrawingPanel} from './canvas/FloatingDrawingPanel';
+import {FloatingPropertiesPanel} from './canvas/FloatingPropertiesPanel';
+import {PDFPageManager} from './canvas/PDFPageManager';
+import {
+    generateLinePath,
+    getFormattedDistance,
+    getGroupColor,
+    MAX_ZOOM,
+    MIN_ZOOM,
+    ZOOM_INCREMENT
+} from './canvas/utils';
+import {getDistance, getPathLength, getPolygonArea, getPolygonCentroid} from '../utils/math';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-import { useStore } from '../store';
-import { MeasurementType, Point } from '../types';
-import {
-    Check, ChevronLeft, ChevronRight, FileX, Minus, Plus, RotateCcw, Ruler, Square
-} from 'lucide-react';
+//  CONSTANTS 
+const SNAP_THRESHOLD_PX = 5;
 
-import { InputModal } from './canvas/InputModal';
-import { ContextMenu, EdgeContextMenu } from './canvas/ContextMenus';
-import { FloatingDrawingPanel } from './canvas/FloatingDrawingPanel';
-import { FloatingPropertiesPanel } from './canvas/FloatingPropertiesPanel';
-import { PDFPageManager } from './canvas/PDFPageManager';
-import {
-    getFormattedDistance, getGroupColor, MAX_ZOOM, MIN_ZOOM, RENDER_THROTTLE, ZOOM_INCREMENT, generateLinePath
-} from './canvas/utils';
+//  EXTERNAL HELPERS 
+const formatArea = (areaSqFt: number) => `${Math.round(areaSqFt * 100) / 100} sq ft`;
+
+const getGraphCenter = (points: Point[]): Point => {
+    let totalLen = 0, weightedX = 0, weightedY = 0, segmentCount = 0;
+    const isGraph = points.some(p => p.connectsTo && p.connectsTo.length > 0);
+
+    if (isGraph) {
+        points.forEach(p => {
+            if (p.connectsTo) {
+                p.connectsTo.forEach(targetIdx => {
+                    const target = points[targetIdx];
+                    if (target) {
+                        const len = Math.sqrt(Math.pow(target.x - p.x, 2) + Math.pow(target.y - p.y, 2));
+                        const midX = (p.x + target.x) / 2;
+                        const midY = (p.y + target.y) / 2;
+                        weightedX += midX * len; weightedY += midY * len; totalLen += len; segmentCount++;
+                    }
+                });
+            }
+        });
+    } else {
+        for (let i = 0; i < points.length - 1; i++) {
+            const p1 = points[i], p2 = points[i + 1];
+            const len = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+            const midX = (p1.x + p2.x) / 2, midY = (p1.y + p2.y) / 2;
+            weightedX += midX * len; weightedY += midY * len; totalLen += len; segmentCount++;
+        }
+    }
+    if (totalLen === 0 || segmentCount === 0) return points[0] || { x: 0, y: 0 };
+    return { x: weightedX / totalLen, y: weightedY / totalLen };
+};
+
+const getPolylineMidpoint = (points: Point[]): Point => {
+    if (!points || points.length < 2) return points[0] || { x: 0, y: 0 };
+    let totalLength = 0;
+    const segmentLengths = [];
+    for(let i = 0; i < points.length - 1; i++) {
+        const d = Math.sqrt(Math.pow(points[i+1].x - points[i].x, 2) + Math.pow(points[i+1].y - points[i].y, 2));
+        segmentLengths.push(d);
+        totalLength += d;
+    }
+    let target = totalLength / 2;
+    for(let i = 0; i < segmentLengths.length; i++) {
+        if(target <= segmentLengths[i]) {
+            const ratio = target / segmentLengths[i];
+            const p1 = points[i], p2 = points[i+1];
+            return { x: p1.x + (p2.x - p1.x) * ratio, y: p1.y + (p2.y - p1.y) * ratio };
+        }
+        target -= segmentLengths[i];
+    }
+    return points[Math.floor(points.length/2)];
+};
 
 const Canvas = () => {
     const {
-        pdfFile, measurements, activeTool, activePageIndex, isCalibrating, activeWizardTool,
-        addMeasurement, updateMeasurement, deleteMeasurement, deletePoint: storeDeletePoint, insertPointAfter,
+        pdfFile, measurements, activeTool, activePageIndex, isCalibrating, activeWizardTool, isScaleLocked,
+        addMeasurement, updateMeasurement, updateMeasurementTransient, deleteMeasurement, deletePoint, insertPointAfter,
         setScale, setIsCalibrating, setPageIndex, zoom, pan, setViewport, setTool, scale,
-        setMeasurements, undo, redo, groupColors, setGroupColor,
-        pageScales, setPageScale
+        commitHistory, undo, redo, groupColors, setGroupColor, setGroupVisibility,
+        pageScales, setPageScale, setMeasurements, toggleScaleLock
     } = useStore();
 
-    // Local points state for the currently being drawn NEW measurement
     const [points, setPoints] = useState<Point[]>([]);
     const viewportRef = useRef<HTMLDivElement>(null);
     const [numPages, setNumPages] = useState<number>(0);
@@ -42,63 +113,96 @@ const Canvas = () => {
     const [isDraggingShape, setIsDraggingShape] = useState(false);
     const [shapeStartPos, setShapeStartPos] = useState<Point | null>(null);
     const [currentMousePos, setCurrentMousePos] = useState<Point | null>(null);
-
-    // Branching State - tracks which point of which measurement we are actively extending
+    const [snapPoint, setSnapPoint] = useState<Point | null>(null);
     const [branchingFrom, setBranchingFrom] = useState<{ id: string, pIdx: number } | null>(null);
 
-    // Double Click Detection State
+    // Double Click Detection
     const [lastClickTime, setLastClickTime] = useState(0);
     const [lastClickId, setLastClickId] = useState<string | null>(null);
-    const [lastClickIndex, setLastClickIndex] = useState<number | null>(null); // For graph, this acts as 'sourceIndex'
-    const [lastClickTarget, setLastClickTarget] = useState<number | null>(null); // For graph edges, we need target index too
+    const [lastClickIndex, setLastClickIndex] = useState<number | null>(null);
+    const [lastClickTarget, setLastClickTarget] = useState<number | null>(null);
 
     // UI State
     const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
     const [isPropertiesPanelOpen, setIsPropertiesPanelOpen] = useState(false);
-
-    // Derived active measurement for properties panel
-    const selectedMeasurementData = useMemo(() =>
-            measurements.find(m => m.id === selectedShape),
-        [measurements, selectedShape]
-    );
-
-    // Modal State
     const [modalType, setModalType] = useState<'name' | 'calibration' | null>(null);
     const [pendingShape, setPendingShape] = useState<{ type: MeasurementType, points: Point[] } | null>(null);
     const [activeId, setActiveId] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<any>(null);
     const [edgeContextMenu, setEdgeContextMenu] = useState<any>(null);
-
     const [isIndependentScale, setIsIndependentScale] = useState(false);
 
-    // Performance optimization state
+    // Render Loop
     const [isRendering, setIsRendering] = useState(false);
-    const [lastRenderTime, setLastRenderTime] = useState(0);
-    const renderTimeoutRef = useRef<NodeJS.Timeout>();
+    const requestRef = useRef<number>();
 
     const effectiveScale = pageScales[activePageIndex] || scale;
     const isCurrentPageIndependent = pageScales[activePageIndex] !== undefined;
 
-    //  Undo/Redo Key Listener
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.ctrlKey || e.metaKey) {
-                if (e.key.toLowerCase() === 'z') {
-                    e.preventDefault();
-                    if (e.shiftKey) {
-                        redo();
-                    } else {
-                        undo();
-                    }
-                } else if (e.key.toLowerCase() === 'y') {
-                    e.preventDefault();
-                    redo();
-                }
-            }
+    const selectedMeasurementData = useMemo(() =>
+            measurements.find(m => m.id === selectedShape),
+        [measurements, selectedShape]
+    );
+
+    //  HELPERS
+
+    const screenToPdf = (screenX: number, screenY: number) => {
+        if (!viewportRef.current) return { x: 0, y: 0 };
+        const rect = viewportRef.current.getBoundingClientRect();
+        return {
+            x: (screenX - rect.left - pan.x) / zoom,
+            y: (screenY - rect.top - pan.y) / zoom
         };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [undo, redo]);
+    };
+
+    const updateViewportSafe = (newZoom: number, newPan: { x: number, y: number }) => {
+        if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        requestRef.current = requestAnimationFrame(() => {
+            setViewport(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom)), newPan);
+            requestRef.current = undefined;
+        });
+    };
+
+    const findSnapTarget = (x: number, y: number): Point | null => {
+        const threshold = SNAP_THRESHOLD_PX / zoom;
+        let closest: Point | null = null;
+        let minDistance = threshold;
+
+        measurements.forEach(m => {
+            if (m.pageIndex !== activePageIndex || m.hidden) return;
+            m.points.forEach(p => {
+                const dist = Math.sqrt(Math.pow(p.x - x, 2) + Math.pow(p.y - y, 2));
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closest = { x: p.x, y: p.y };
+                }
+            });
+        });
+        return closest;
+    };
+
+    const isPointInShape = (point: Point, shapePoints: Point[]) => {
+        let inside = false;
+        for (let i = 0, j = shapePoints.length - 1; i < shapePoints.length; j = i++) {
+            if (((shapePoints[i].y > point.y) !== (shapePoints[j].y > point.y)) &&
+                (point.x < (shapePoints[j].x - shapePoints[i].x) * (point.y - shapePoints[i].y) / (shapePoints[j].y - shapePoints[i].y) + shapePoints[i].x)) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    };
+
+    const createDefaultSquare = (center: Point) => {
+        const size = 100 / zoom;
+        return [
+            { x: center.x - size / 2, y: center.y - size / 2 },
+            { x: center.x + size / 2, y: center.y - size / 2 },
+            { x: center.x + size / 2, y: center.y + size / 2 },
+            { x: center.x - size / 2, y: center.y + size / 2 }
+        ];
+    };
+
+    //  HANDLERS 
 
     const handleToolChange = (tool: 'select' | 'line' | 'shape' | 'measure') => {
         setTool(tool);
@@ -140,395 +244,16 @@ const Canvas = () => {
         setMeasurements([...otherPageItems, ...currentPageItems]);
     };
 
-    // Custom delete point that handles graph topology
-    const handleGraphDeletePoint = (mId: string, pIdx: number) => {
-        const m = measurements.find(meas => meas.id === mId);
-        if(!m) return;
-
-        // If it's a simple shape/line without connections, use store default
-        const isGraph = m.points.some(p => p.connectsTo && p.connectsTo.length > 0);
-        if (!isGraph) {
-            storeDeletePoint(mId, pIdx);
-            return;
-        }
-
-        const newPoints = m.points
-            .filter((_, idx) => idx !== pIdx) // Remove the point
-            .map(p => {
-                const newConnectsTo = (p.connectsTo || [])
-                    .filter(targetIdx => targetIdx !== pIdx) // Remove connection to deleted point
-                    .map(targetIdx => targetIdx > pIdx ? targetIdx - 1 : targetIdx); // Shift indices
-                return { ...p, connectsTo: newConnectsTo };
-            });
-
-        updateMeasurement(mId, { points: newPoints });
-    };
-
-    const handleGraphSplitEdge = (mId: string, sourceIdx: number, targetIdx: number, clickPoint: Point) => {
-        const m = measurements.find(meas => meas.id === mId);
-        if (!m) return;
-
-        // 1. Create new point, append to end
-        const newPointIdx = m.points.length;
-        // The new point connects to the old target
-        const newPoint: Point = { ...clickPoint, connectsTo: [targetIdx] };
-
-        // 2. Update source point to connect to new point instead of old target
-        const updatedPoints = [...m.points, newPoint];
-        const sourcePoint = updatedPoints[sourceIdx];
-
-        updatedPoints[sourceIdx] = {
-            ...sourcePoint,
-            connectsTo: (sourcePoint.connectsTo || []).map(idx => idx === targetIdx ? newPointIdx : idx)
-        };
-
-        updateMeasurement(mId, { points: updatedPoints });
-    };
-
-    const screenToPdf = (screenX: number, screenY: number) => {
-        if (!viewportRef.current) return { x: 0, y: 0 };
-        const rect = viewportRef.current.getBoundingClientRect();
-        return {
-            x: (screenX - rect.left - pan.x) / zoom,
-            y: (screenY - rect.top - pan.y) / zoom
-        };
-    };
-
-    const throttledViewportUpdate = (newZoom: number, newPan: { x: number, y: number }) => {
-        const now = Date.now();
-        if (now - lastRenderTime < RENDER_THROTTLE) {
-            if (renderTimeoutRef.current) clearTimeout(renderTimeoutRef.current);
-            renderTimeoutRef.current = setTimeout(() => {
-                setViewport(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom)), newPan);
-                setLastRenderTime(Date.now());
-            }, RENDER_THROTTLE);
-        } else {
-            setViewport(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom)), newPan);
-            setLastRenderTime(now);
-        }
-    };
-
-    useEffect(() => {
-        return () => renderTimeoutRef.current && clearTimeout(renderTimeoutRef.current);
-    }, []);
-
-    const createDefaultSquare = (center: Point) => {
-        const size = 100 / zoom;
-        return [
-            { x: center.x - size / 2, y: center.y - size / 2 },
-            { x: center.x + size / 2, y: center.y - size / 2 },
-            { x: center.x + size / 2, y: center.y + size / 2 },
-            { x: center.x - size / 2, y: center.y + size / 2 }
-        ];
-    };
-
-    const isPointInShape = (point: Point, shapePoints: Point[]) => {
-        let inside = false;
-        for (let i = 0, j = shapePoints.length - 1; i < shapePoints.length; j = i++) {
-            if (((shapePoints[i].y > point.y) !== (shapePoints[j].y > point.y)) &&
-                (point.x < (shapePoints[j].x - shapePoints[i].x) * (point.y - shapePoints[i].y) / (shapePoints[j].y - shapePoints[i].y) + shapePoints[i].x)) {
-                inside = !inside;
-            }
-        }
-        return inside;
-    };
-
-    const handleBranchFromPoint = (mId: string, pIdx: number) => {
-        setBranchingFrom({ id: mId, pIdx });
-    };
-
-    const handleMouseDown = (e: React.MouseEvent) => {
-        if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
-            e.preventDefault();
-            setIsPanning(true);
-            setLastMouse({ x: e.clientX, y: e.clientY });
-            return;
-        }
-
-        if (e.button === 0 && !contextMenu && !draggedVertex && !edgeContextMenu) {
-            const { x, y } = screenToPdf(e.clientX, e.clientY);
-
-            // Branching Clicks
-            if (branchingFrom) {
-                const m = measurements.find(meas => meas.id === branchingFrom.id);
-                if (m) {
-                    const newPointIndex = m.points.length;
-                    const newPoint: Point = { x, y, connectsTo: [] };
-
-                    // Create copy of points
-                    const newPoints = [...m.points, newPoint];
-
-                    // Link the 'branchingFrom' point to this new point
-                    const parentPoint = newPoints[branchingFrom.pIdx];
-                    const existingConnections = parentPoint.connectsTo || [];
-                    newPoints[branchingFrom.pIdx] = {
-                        ...parentPoint,
-                        connectsTo: [...existingConnections, newPointIndex]
-                    };
-
-                    updateMeasurement(m.id, { points: newPoints });
-                    // Update state to extend from the newly created point
-                    setBranchingFrom({ id: m.id, pIdx: newPointIndex });
-                }
-                return;
-            }
-
-            if (activeTool === 'select' && !isCalibrating) {
-                const clickedShape = measurements.find(m =>
-                    m.pageIndex === activePageIndex &&
-                    m.type === 'shape' &&
-                    isPointInShape({ x, y }, m.points)
-                );
-
-                if (clickedShape) {
-                    setSelectedShape(clickedShape.id);
-                    setIsDraggingShape(true);
-                    setShapeStartPos({ x, y });
-                } else {
-                    setSelectedShape(null);
-                }
-                return;
-            }
-
-            if (activeTool === 'shape') {
-                const squarePoints = createDefaultSquare({ x, y });
-                const finalName = activeWizardTool || 'Shape';
-                addMeasurement('shape', squarePoints, finalName);
-                setTimeout(() => {
-                    const newShape = measurements[measurements.length - 1];
-                    if (newShape) {
-                        setSelectedShape(newShape.id);
-                        setIsPropertiesPanelOpen(true);
-                    }
-                }, 0);
-                return;
-            }
-
-            if (activeTool === 'measure') {
-                if (points.length >= 1) {
-                    setPoints([{ x, y }]);
-                } else {
-                    setPoints([{ x, y }]);
-                }
-                return;
-            }
-
-            if (activeTool === 'line' && points.length >= 3) {
-                // If creating a new closed loop shape automatically
-                const firstPoint = points[0];
-                const distance = Math.sqrt(Math.pow(x - firstPoint.x, 2) + Math.pow(y - firstPoint.y, 2));
-                const threshold = 15 / zoom;
-
-                if (distance < threshold) {
-                    const finalName = activeWizardTool || 'Shape';
-                    addMeasurement('shape', points, finalName);
-                    setPoints([]);
-                    setTimeout(() => {
-                        const newShape = measurements[measurements.length - 1];
-                        if (newShape) {
-                            setSelectedShape(newShape.id);
-                            setIsPropertiesPanelOpen(true);
-                        }
-                    }, 0);
-                    return;
-                }
-            }
-
-            // ADD POINT TO NEW LINE BEING DRAWN
-            const newPoint: Point = { x, y, connectsTo: [] };
-
-            // If we have previous points, link the last one to this new one
-            let updatedPoints = [...points, newPoint];
-            if (points.length > 0) {
-                const lastIndex = points.length - 1;
-                const newIndex = points.length;
-
-                // Copy the previous point and add connection
-                updatedPoints[lastIndex] = {
-                    ...updatedPoints[lastIndex],
-                    connectsTo: [...(updatedPoints[lastIndex].connectsTo || []), newIndex]
-                };
-            }
-
-            setPoints(updatedPoints);
-
-            if (isCalibrating && updatedPoints.length === 2) {
-                setModalType('calibration');
-            }
-        }
-    };
-
-    const handleMouseMove = (e: React.MouseEvent) => {
-        const { x, y } = screenToPdf(e.clientX, e.clientY);
-
-        if (activeTool === 'measure' || activeTool === 'line' || branchingFrom) {
-            setCurrentMousePos({ x, y });
-        }
-
-        if (draggedVertex) {
-            const m = measurements.find(m => m.id === draggedVertex.mId);
-            if (m) {
-                // Drag Logic
-                const sourcePoint = m.points[draggedVertex.pIdx];
-                const coincidentIndices = m.points.map((p, i) =>
-                    (Math.abs(p.x - sourcePoint.x) < 0.01 && Math.abs(p.y - sourcePoint.y) < 0.01) ? i : -1
-                ).filter(i => i !== -1);
-
-                const indicesToUpdate = coincidentIndices.length > 0 ? coincidentIndices : [draggedVertex.pIdx];
-
-                const newPoints = [...m.points];
-                indicesToUpdate.forEach(i => {
-                    newPoints[i] = { ...newPoints[i], x, y };
-                });
-
-                updateMeasurement(m.id, { points: newPoints });
-            }
-            return;
-        }
-
-        if (isDraggingShape && selectedShape && shapeStartPos) {
-            const dx = x - shapeStartPos.x;
-            const dy = y - shapeStartPos.y;
-
-            const shape = measurements.find(m => m.id === selectedShape);
-            if (shape) {
-                const newPoints = shape.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy }));
-                updateMeasurement(selectedShape, { points: newPoints });
-                setShapeStartPos({ x, y });
-            }
-            return;
-        }
-
-        if (isPanning && lastMouse) {
-            const dx = e.clientX - lastMouse.x;
-            const dy = e.clientY - lastMouse.y;
-            throttledViewportUpdate(zoom, { x: pan.x + dx, y: pan.y + dy });
-            setLastMouse({ x: e.clientX, y: e.clientY });
-        }
-    };
-
-    const handleMouseUp = () => {
-        setIsPanning(false);
-        setLastMouse(null);
-        setDraggedVertex(null);
-        setIsDraggingShape(false);
-        setShapeStartPos(null);
-    };
-
-    const handleWheel = (e: React.WheelEvent) => {
-        if (e.ctrlKey) {
-            e.preventDefault();
-            const zoomFactor = -e.deltaY * 0.001;
-            const newZoom = zoom + zoomFactor;
-            throttledViewportUpdate(newZoom, pan);
-        } else {
-            throttledViewportUpdate(zoom, { x: pan.x - e.deltaX, y: pan.y - e.deltaY });
-        }
-    };
-
-    const handleRightClickCanvas = (e: React.MouseEvent) => {
-        e.preventDefault();
-
-        // Stop Branching
-        if (branchingFrom) {
-            setBranchingFrom(null);
-            return;
-        }
-
-        if (isCalibrating) {
-            setIsCalibrating(false);
-            setPoints([]);
-            return;
-        }
-
-        // Finish drawing Line
-        if (points.length >= 2 && activeTool === 'line') {
-            const finalName = activeWizardTool || "Line";
-            addMeasurement('line', points, finalName);
-            setPoints([]);
-            setTimeout(() => {
-                const newShape = measurements.find(m => m.name === finalName && m.points.length === points.length);
-                if (newShape) {
-                    setSelectedShape(newShape.id);
-                    setIsPropertiesPanelOpen(true);
-                }
-            }, 0);
-        } else if (activeTool === 'measure') {
-            setPoints([]);
-        }
-    };
-
-    const handlePointRightClick = (e: React.MouseEvent, mId: string, pIdx: number) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setContextMenu({ x: e.clientX, y: e.clientY, mId, pIdx });
-    };
-
-    const handleEdgeMouseDown = (e: React.MouseEvent, mId: string, sourceIdx: number, targetIdx?: number) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const now = Date.now();
-        // Check double click. If targetIdx is provided, check that too (for graph edges)
-        const sameTarget = targetIdx !== undefined ? lastClickTarget === targetIdx : true;
-
-        if (lastClickId === mId && lastClickIndex === sourceIdx && sameTarget && now - lastClickTime < 300) {
-            const clickPoint = screenToPdf(e.clientX, e.clientY);
-
-            if (targetIdx !== undefined) {
-                // Graph Split
-                handleGraphSplitEdge(mId, sourceIdx, targetIdx, clickPoint);
-            } else {
-                // Standard Split (Linear)
-                insertPointAfter(mId, sourceIdx, clickPoint);
-            }
-
-            setLastClickTime(0);
-            setLastClickId(null);
-            setLastClickTarget(null);
-        } else {
-            setLastClickTime(now);
-            setLastClickId(mId);
-            setLastClickIndex(sourceIdx);
-            setLastClickTarget(targetIdx !== undefined ? targetIdx : null);
-        }
-    };
-
-    const handleEdgeRightClick = (e: React.MouseEvent, mId: string, sourceIdx: number, targetIdx?: number) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const clickPoint = screenToPdf(e.clientX, e.clientY);
-
-        setEdgeContextMenu({
-            x: e.clientX,
-            y: e.clientY,
-            onAddVertex: () => {
-                if (targetIdx !== undefined) {
-                    handleGraphSplitEdge(mId, sourceIdx, targetIdx, clickPoint);
-                } else {
-                    insertPointAfter(mId, sourceIdx, clickPoint);
-                }
-            }
-        });
-    };
-
     const handleRemovePage = (pageIndex: number) => {
         setRemovedPages(prev => new Set([...prev, pageIndex]));
         if (pageIndex === activePageIndex) {
             let nextPage = pageIndex + 1;
-            while (nextPage < numPages && removedPages.has(nextPage)) {
-                nextPage++;
-            }
+            while (nextPage < numPages && removedPages.has(nextPage)) nextPage++;
             if (nextPage >= numPages) {
                 nextPage = pageIndex - 1;
-                while (nextPage >= 0 && removedPages.has(nextPage)) {
-                    nextPage--;
-                }
+                while (nextPage >= 0 && removedPages.has(nextPage)) nextPage--;
             }
-            if (nextPage >= 0) {
-                setPageIndex(nextPage);
-            }
+            if (nextPage >= 0) setPageIndex(nextPage);
         }
     };
 
@@ -540,11 +265,8 @@ const Canvas = () => {
             const realDist = parseFloat(val);
             if (realDist > 0) {
                 const newScale = pixelDist / realDist;
-                if (isIndependentScale) {
-                    setPageScale(activePageIndex, newScale);
-                } else {
-                    setScale(newScale);
-                }
+                if (isIndependentScale) setPageScale(activePageIndex, newScale);
+                else setScale(newScale);
             }
             setPoints([]);
             setIsCalibrating(false);
@@ -553,9 +275,7 @@ const Canvas = () => {
             if (pendingShape) {
                 addMeasurement(pendingShape.type, pendingShape.points, finalName);
                 setPendingShape(null);
-            } else if (activeId) {
-                updateMeasurement(activeId, { name: finalName });
-            }
+            } else if (activeId) updateMeasurement(activeId, { name: finalName });
         }
         setModalType(null);
         setActiveId(null);
@@ -572,13 +292,295 @@ const Canvas = () => {
     };
 
     const toggleIndependentScale = (enabled: boolean) => {
-        if (enabled) {
-            setPageScale(activePageIndex, scale);
+        if (enabled) setPageScale(activePageIndex, scale);
+        else setPageScale(activePageIndex, undefined);
+    };
+
+    const handleBranchFromPoint = (mId: string, pIdx: number) => {
+        setBranchingFrom({ id: mId, pIdx });
+    };
+
+    //  GRAPH OPS 
+    const handleGraphDeletePoint = (mId: string, pIdx: number) => {
+        const m = measurements.find(meas => meas.id === mId);
+        if(!m) return;
+        const isGraph = m.points.some(p => p.connectsTo && p.connectsTo.length > 0);
+        if (!isGraph) { deletePoint(mId, pIdx); return; }
+        const newPoints = m.points.filter((_, idx) => idx !== pIdx).map(p => {
+            const newConnectsTo = (p.connectsTo || []).filter(targetIdx => targetIdx !== pIdx).map(targetIdx => targetIdx > pIdx ? targetIdx - 1 : targetIdx);
+            return { ...p, connectsTo: newConnectsTo };
+        });
+        updateMeasurement(mId, { points: newPoints });
+    };
+
+    const handleGraphSplitEdge = (mId: string, sourceIdx: number, targetIdx: number, clickPoint: Point) => {
+        const m = measurements.find(meas => meas.id === mId);
+        if (!m) return;
+        const newPointIdx = m.points.length;
+        const newPoint: Point = { ...clickPoint, connectsTo: [targetIdx] };
+        const updatedPoints = [...m.points, newPoint];
+        const sourcePoint = updatedPoints[sourceIdx];
+        updatedPoints[sourceIdx] = { ...sourcePoint, connectsTo: (sourcePoint.connectsTo || []).map(idx => idx === targetIdx ? newPointIdx : idx) };
+        updateMeasurement(mId, { points: updatedPoints });
+    };
+
+    const handleConvertToCurve = (mId: string, sourceIdx: number, targetIdx: number) => {
+        const m = measurements.find(meas => meas.id === mId);
+        if (!m) return;
+        const newPoints = [...m.points];
+        const targetPoint = newPoints[targetIdx];
+        const sourcePoint = newPoints[sourceIdx];
+        const cp = { x: (sourcePoint.x + targetPoint.x) / 2, y: (sourcePoint.y + targetPoint.y) / 2 - 20/zoom };
+        newPoints[targetIdx] = { ...targetPoint, controlPoint: cp };
+        updateMeasurement(mId, { points: newPoints });
+        commitHistory();
+    };
+
+    //  MOUSE & KEY HANDLERS 
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key.toLowerCase() === 'z') {
+                    e.preventDefault();
+                    if (e.shiftKey) redo(); else undo();
+                } else if (e.key.toLowerCase() === 'y') {
+                    e.preventDefault();
+                    redo();
+                }
+            } else {
+                switch(e.key.toLowerCase()) {
+                    case 'l': setTool('line'); break;
+                    case 's': setTool('shape'); break;
+                    case 'm': setTool('measure'); break;
+                    case 'v': case 'escape':
+                        setTool('select'); setPoints([]); setBranchingFrom(null); setSelectedShape(null);
+                        break;
+                    case 'delete': case 'backspace':
+                        if (selectedShape) { deleteMeasurement(selectedShape); setSelectedShape(null); }
+                        break;
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [undo, redo, selectedShape, deleteMeasurement, setTool]);
+
+    const handleEdgeMouseDown = (e: React.MouseEvent, mId: string, sourceIdx: number, targetIdx?: number) => {
+        e.preventDefault(); e.stopPropagation();
+        const now = Date.now();
+        const sameTarget = targetIdx !== undefined ? lastClickTarget === targetIdx : true;
+        if (lastClickId === mId && lastClickIndex === sourceIdx && sameTarget && now - lastClickTime < 300) {
+            const clickPoint = screenToPdf(e.clientX, e.clientY);
+            if (targetIdx !== undefined) handleGraphSplitEdge(mId, sourceIdx, targetIdx, clickPoint);
+            else insertPointAfter(mId, sourceIdx, clickPoint);
+            setLastClickTime(0); setLastClickId(null); setLastClickTarget(null);
         } else {
-            setPageScale(activePageIndex, undefined);
+            setLastClickTime(now); setLastClickId(mId); setLastClickIndex(sourceIdx); setLastClickTarget(targetIdx !== undefined ? targetIdx : null);
         }
     };
 
+    const handleEdgeRightClick = (e: React.MouseEvent, mId: string, sourceIdx: number, targetIdx?: number) => {
+        e.preventDefault(); e.stopPropagation();
+        const clickPoint = screenToPdf(e.clientX, e.clientY);
+        setEdgeContextMenu({
+            x: e.clientX, y: e.clientY,
+            onAddVertex: () => { if (targetIdx !== undefined) handleGraphSplitEdge(mId, sourceIdx, targetIdx, clickPoint); else insertPointAfter(mId, sourceIdx, clickPoint); },
+            onConvertToCurve: targetIdx !== undefined ? () => handleConvertToCurve(mId, sourceIdx, targetIdx) : undefined
+        });
+    };
+
+    const handlePointRightClick = (e: React.MouseEvent, mId: string, pIdx: number) => {
+        e.preventDefault(); e.stopPropagation();
+        setContextMenu({ x: e.clientX, y: e.clientY, mId, pIdx });
+    };
+
+    const handleRightClickCanvas = (e: React.MouseEvent) => {
+        e.preventDefault();
+        if (branchingFrom) { setBranchingFrom(null); return; }
+        if (isCalibrating) { setIsCalibrating(false); setPoints([]); return; }
+        if (points.length >= 2 && activeTool === 'line') {
+            const finalName = activeWizardTool || "Line";
+            addMeasurement('line', points, finalName);
+            setPoints([]);
+            setTimeout(() => {
+                const newShape = measurements.find(m => m.name === finalName && m.points.length === points.length);
+                if (newShape) { setSelectedShape(newShape.id); setIsPropertiesPanelOpen(true); }
+            }, 0);
+        } else if (activeTool === 'measure') {
+            setPoints([]);
+        }
+    };
+
+    const handleMouseUp = () => {
+        if (draggedVertex) commitHistory();
+        setIsPanning(false);
+        setLastMouse(null);
+        setDraggedVertex(null);
+        setIsDraggingShape(false);
+        setShapeStartPos(null);
+    };
+
+    const handleWheel = (e: React.WheelEvent) => {
+        if (e.ctrlKey) {
+            e.preventDefault();
+            const zoomFactor = -e.deltaY * 0.001;
+            const newZoom = zoom + zoomFactor;
+            updateViewportSafe(newZoom, pan);
+        } else {
+            updateViewportSafe(zoom, { x: pan.x - e.deltaX, y: pan.y - e.deltaY });
+        }
+    };
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        let { x, y } = screenToPdf(e.clientX, e.clientY);
+        let snapped = false;
+
+        if ((activeTool === 'line' || activeTool === 'shape' || activeTool === 'measure' || draggedVertex || branchingFrom) && !e.ctrlKey) {
+            const target = findSnapTarget(x, y);
+            if (target) {
+                if (!snapPoint || snapPoint.x !== target.x || snapPoint.y !== target.y) setSnapPoint(target);
+                x = target.x; y = target.y; snapped = true;
+            } else {
+                if (snapPoint) setSnapPoint(null);
+            }
+        } else {
+            if (snapPoint) setSnapPoint(null);
+        }
+
+        if (e.shiftKey && points.length > 0 && !snapped) {
+            const last = points[points.length - 1];
+            const dx = Math.abs(x - last.x);
+            const dy = Math.abs(y - last.y);
+            if (dx > dy) y = last.y; else x = last.x;
+        }
+
+        if (activeTool === 'measure' || activeTool === 'line' || branchingFrom) setCurrentMousePos({ x, y });
+
+        if (draggedVertex) {
+            const m = measurements.find(m => m.id === draggedVertex.mId);
+            if (m) {
+                const sourcePoint = m.points[draggedVertex.pIdx];
+                const coincidentIndices = m.points.map((p, i) => (Math.abs(p.x - sourcePoint.x) < 0.01 && Math.abs(p.y - sourcePoint.y) < 0.01) ? i : -1).filter(i => i !== -1);
+                const indicesToUpdate = coincidentIndices.length > 0 ? coincidentIndices : [draggedVertex.pIdx];
+                const newPoints = [...m.points];
+                indicesToUpdate.forEach(i => { newPoints[i] = { ...newPoints[i], x, y }; });
+                updateMeasurementTransient(m.id, { points: newPoints });
+            }
+            return;
+        }
+
+        if (isDraggingShape && selectedShape && shapeStartPos) {
+            const dx = x - shapeStartPos.x;
+            const dy = y - shapeStartPos.y;
+            const shape = measurements.find(m => m.id === selectedShape);
+            if (shape) {
+                const newPoints = shape.points.map(p => ({ ...p, x: p.x + dx, y: p.y + dy }));
+                updateMeasurement(selectedShape, { points: newPoints });
+                setShapeStartPos({ x, y });
+            }
+            return;
+        }
+
+        if (isPanning && lastMouse) {
+            const dx = e.clientX - lastMouse.x;
+            const dy = e.clientY - lastMouse.y;
+            updateViewportSafe(zoom, { x: pan.x + dx, y: pan.y + dy });
+            setLastMouse({ x: e.clientX, y: e.clientY });
+        }
+    };
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        if (e.button === 1 || (e.button === 0 && e.shiftKey && !points.length)) {
+            e.preventDefault();
+            setIsPanning(true);
+            setLastMouse({ x: e.clientX, y: e.clientY });
+            return;
+        }
+
+        if (e.button === 0 && !contextMenu && !draggedVertex && !edgeContextMenu) {
+            let { x, y } = screenToPdf(e.clientX, e.clientY);
+            if (snapPoint && !e.ctrlKey) { x = snapPoint.x; y = snapPoint.y; }
+            else if (e.shiftKey && points.length > 0) {
+                const last = points[points.length - 1];
+                const dx = Math.abs(x - last.x); const dy = Math.abs(y - last.y);
+                if (dx > dy) y = last.y; else x = last.x;
+            }
+
+            if (branchingFrom) {
+                const m = measurements.find(meas => meas.id === branchingFrom.id);
+                if (m) {
+                    const newPointIndex = m.points.length;
+                    const newPoint: Point = { x, y, connectsTo: [] };
+                    const newPoints = [...m.points, newPoint];
+                    const parentPoint = newPoints[branchingFrom.pIdx];
+                    const existingConnections = parentPoint.connectsTo || [];
+                    newPoints[branchingFrom.pIdx] = { ...parentPoint, connectsTo: [...existingConnections, newPointIndex] };
+                    updateMeasurement(m.id, { points: newPoints });
+                    setBranchingFrom({ id: m.id, pIdx: newPointIndex });
+                }
+                return;
+            }
+
+            if (activeTool === 'select' && !isCalibrating) {
+                const clickedShape = measurements.find(m => m.pageIndex === activePageIndex && m.type === 'shape' && isPointInShape({ x, y }, m.points));
+                if (clickedShape) {
+                    setSelectedShape(clickedShape.id);
+                    setIsDraggingShape(true);
+                    setShapeStartPos({ x, y });
+                } else {
+                    setSelectedShape(null);
+                }
+                return;
+            }
+
+            if (activeTool === 'shape') {
+                const squarePoints = createDefaultSquare({ x, y });
+                const finalName = activeWizardTool || 'Shape';
+                addMeasurement('shape', squarePoints, finalName);
+                setTimeout(() => {
+                    const newShape = measurements[measurements.length - 1];
+                    if (newShape) { setSelectedShape(newShape.id); setIsPropertiesPanelOpen(true); }
+                }, 0);
+                return;
+            }
+
+            if (activeTool === 'measure') {
+                if (points.length >= 1) setPoints([{ x, y }]);
+                else setPoints([{ x, y }]);
+                return;
+            }
+
+            if (activeTool === 'line' && points.length >= 3) {
+                const firstPoint = points[0];
+                const distance = Math.sqrt(Math.pow(x - firstPoint.x, 2) + Math.pow(y - firstPoint.y, 2));
+                const threshold = 15 / zoom;
+                if (distance < threshold) {
+                    const finalName = activeWizardTool || 'Shape';
+                    addMeasurement('shape', points, finalName);
+                    setPoints([]);
+                    setTimeout(() => {
+                        const newShape = measurements[measurements.length - 1];
+                        if (newShape) { setSelectedShape(newShape.id); setIsPropertiesPanelOpen(true); }
+                    }, 0);
+                    return;
+                }
+            }
+
+            const newPoint: Point = { x, y, connectsTo: [] };
+            let updatedPoints = [...points, newPoint];
+            if (points.length > 0) {
+                const lastIndex = points.length - 1;
+                const newIndex = points.length;
+                updatedPoints[lastIndex] = { ...updatedPoints[lastIndex], connectsTo: [...(updatedPoints[lastIndex].connectsTo || []), newIndex] };
+            }
+            setPoints(updatedPoints);
+            if (isCalibrating && updatedPoints.length === 2) setModalType('calibration');
+        }
+    };
+
+    //  RENDER START 
     const availablePages = Array.from({ length: numPages }, (_, i) => i).filter(i => !removedPages.has(i));
 
     return (
@@ -623,6 +625,7 @@ const Canvas = () => {
                     y={edgeContextMenu.y}
                     onClose={() => setEdgeContextMenu(null)}
                     onAddVertex={edgeContextMenu.onAddVertex}
+                    onConvertToCurve={edgeContextMenu.onConvertToCurve}
                 />
             )}
 
@@ -636,6 +639,7 @@ const Canvas = () => {
                 onSelectMeasurement={setSelectedShape}
                 selectedMeasurement={selectedShape}
                 onToggleMeasurementVisibility={handleToggleMeasurementVisibility}
+                onSetGroupVisibility={setGroupVisibility}
                 onOpenProperties={handleOpenProperties}
                 onUpdateMeasurement={updateMeasurement}
                 onReorderMeasurements={handleReorderMeasurements}
@@ -669,23 +673,31 @@ const Canvas = () => {
                     <span className="font-bold text-gray-500 text-xs uppercase tracking-wider">Measurements</span>
 
                     <button
-                        onClick={handleCalibrate}
-                        className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${isCalibrating
-                            ? 'bg-yellow-100 text-yellow-700 border border-yellow-200 animate-pulse'
-                            : 'bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200'
+                        onClick={isScaleLocked ? undefined : handleCalibrate}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${isScaleLocked
+                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300'
+                            : (isCalibrating ? 'bg-yellow-100 text-yellow-700 border border-yellow-200 animate-pulse' : 'bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200')
                         }`}
                     >
                         <Ruler size={14} />
                         {isCalibrating ? 'Calibrating...' : 'Calibrate'}
                     </button>
 
+                    <button
+                        onClick={toggleScaleLock}
+                        className={`p-1.5 rounded hover:bg-gray-200 ${isScaleLocked ? 'text-red-500' : 'text-gray-400'}`}
+                        title={isScaleLocked ? "Unlock Scale" : "Lock Scale"}
+                    >
+                        {isScaleLocked ? <Lock size={14} /> : <Unlock size={14} />}
+                    </button>
+
                     <div className="flex items-center gap-2">
                         {isCurrentPageIndependent ? (
-                            <div className="flex items-center gap-1 bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs font-bold cursor-pointer hover:bg-purple-200" onClick={() => toggleIndependentScale(false)} title="Click to use Global Scale">
+                            <div className="flex items-center gap-1 bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs font-bold cursor-pointer hover:bg-purple-200" onClick={() => !isScaleLocked && toggleIndependentScale(false)} title="Click to use Global Scale">
                                 <Check size={10} /> Pg Scale
                             </div>
                         ) : (
-                            <div className="flex items-center gap-1 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold cursor-pointer hover:bg-green-200" onClick={() => toggleIndependentScale(true)} title="Click to make Page Scale Independent">
+                            <div className="flex items-center gap-1 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold cursor-pointer hover:bg-green-200" onClick={() => !isScaleLocked && toggleIndependentScale(true)} title="Click to make Page Scale Independent">
                                 <Check size={10} /> Global
                             </div>
                         )}
@@ -733,7 +745,7 @@ const Canvas = () => {
                 <div className="flex items-center gap-2 w-1/4 justify-end">
                     <div className="flex items-center bg-gray-100 rounded-md p-1 gap-1">
                         <button
-                            onClick={() => throttledViewportUpdate(zoom - ZOOM_INCREMENT, pan)}
+                            onClick={() => updateViewportSafe(zoom - ZOOM_INCREMENT, pan)}
                             className="p-1 hover:bg-white rounded shadow-sm transition-all"
                             title="Zoom Out"
                         >
@@ -747,7 +759,7 @@ const Canvas = () => {
                                 max={MAX_ZOOM}
                                 step={0.1}
                                 value={zoom}
-                                onChange={(e) => throttledViewportUpdate(parseFloat(e.target.value), pan)}
+                                onChange={(e) => updateViewportSafe(parseFloat(e.target.value), pan)}
                                 className="w-20 h-1 bg-gray-300 rounded-lg appearance-none cursor-pointer slider"
                                 title="Zoom Slider"
                             />
@@ -757,7 +769,7 @@ const Canvas = () => {
                         </div>
 
                         <button
-                            onClick={() => throttledViewportUpdate(zoom + ZOOM_INCREMENT, pan)}
+                            onClick={() => updateViewportSafe(zoom + ZOOM_INCREMENT, pan)}
                             className="p-1 hover:bg-white rounded shadow-sm transition-all"
                             title="Zoom In"
                         >
@@ -781,7 +793,7 @@ const Canvas = () => {
                                 const centerX = (containerWidth - pageWidth * fitZoom) / 2;
                                 const centerY = (containerHeight - pageHeight * fitZoom) / 2;
 
-                                throttledViewportUpdate(fitZoom, { x: centerX, y: centerY });
+                                updateViewportSafe(fitZoom, { x: centerX, y: centerY });
                             }
                         }}
                         className="p-1.5 hover:bg-gray-100 rounded text-gray-500 hover:text-blue-600"
@@ -839,8 +851,22 @@ const Canvas = () => {
                             <svg className="absolute inset-0 w-full h-full">
                                 {measurements.filter(m => m.pageIndex === activePageIndex && !m.hidden).map(m => {
                                     const color = getGroupColor(m.group, groupColors);
-                                    // Check if this measurement uses graph logic
-                                    const isGraph = m.points.some(p => p.connectsTo && p.connectsTo.length > 0);
+                                    const showLabels = m.labels && (m.labels.showTotalLength || m.labels.showArea || m.labels.showEdgeLengths);
+                                    const fontSize = Math.max(10, 14 / zoom);
+
+                                    // LABEL POSITIONING
+                                    let labelPos = { x: 0, y: 0 };
+                                    if (m.type === 'shape') {
+                                        labelPos = getPolygonCentroid(m.points);
+                                        if (isNaN(labelPos.x) || isNaN(labelPos.y)) {
+                                            const sum = m.points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+                                            labelPos = { x: sum.x / m.points.length, y: sum.y / m.points.length };
+                                        }
+                                    } else {
+                                        const isGraph = m.points.some(p => p.connectsTo && p.connectsTo.length > 0);
+                                        if (isGraph) labelPos = getGraphCenter(m.points);
+                                        else labelPos = getPolylineMidpoint(m.points);
+                                    }
 
                                     return (
                                         <g key={m.id}>
@@ -898,48 +924,48 @@ const Canvas = () => {
                                                         }}
                                                     />
 
-                                                    {/* Render Edge Handles for Graph Lines */}
-                                                    {isGraph && m.points.map((p, sourceIdx) => {
-                                                        if (!p.connectsTo) return null;
-                                                        return p.connectsTo.map(targetIdx => {
-                                                            const targetP = m.points[targetIdx];
-                                                            if (!targetP) return null;
+                                                    {m.points.some(p => p.connectsTo && p.connectsTo.length > 0) ?
+                                                        m.points.map((p, sourceIdx) => {
+                                                            if (!p.connectsTo) return null;
+                                                            return p.connectsTo.map(targetIdx => {
+                                                                const targetP = m.points[targetIdx];
+                                                                if (!targetP) return null;
+                                                                return (
+                                                                    <line
+                                                                        key={`edge-${sourceIdx}-${targetIdx}`}
+                                                                        x1={p.x} y1={p.y}
+                                                                        x2={targetP.x} y2={targetP.y}
+                                                                        stroke="transparent"
+                                                                        strokeWidth={Math.max(8, 12 / zoom)}
+                                                                        className="cursor-pointer"
+                                                                        onMouseDown={(e) => handleEdgeMouseDown(e, m.id, sourceIdx, targetIdx)}
+                                                                        onContextMenu={(e) => handleEdgeRightClick(e, m.id, sourceIdx, targetIdx)}
+                                                                        vectorEffect="non-scaling-stroke"
+                                                                        style={{ pointerEvents: 'all' }}
+                                                                    />
+                                                                );
+                                                            });
+                                                        })
+                                                        :
+                                                        m.points.map((p, idx) => {
+                                                            if (idx === m.points.length - 1) return null;
+                                                            const nextP = m.points[idx + 1];
                                                             return (
                                                                 <line
-                                                                    key={`edge-${sourceIdx}-${targetIdx}`}
+                                                                    key={`edge-${idx}`}
                                                                     x1={p.x} y1={p.y}
-                                                                    x2={targetP.x} y2={targetP.y}
+                                                                    x2={nextP.x} y2={nextP.y}
                                                                     stroke="transparent"
                                                                     strokeWidth={Math.max(8, 12 / zoom)}
                                                                     className="cursor-pointer"
-                                                                    onMouseDown={(e) => handleEdgeMouseDown(e, m.id, sourceIdx, targetIdx)}
-                                                                    onContextMenu={(e) => handleEdgeRightClick(e, m.id, sourceIdx, targetIdx)}
+                                                                    onMouseDown={(e) => handleEdgeMouseDown(e, m.id, idx)}
+                                                                    onContextMenu={(e) => handleEdgeRightClick(e, m.id, idx)}
                                                                     vectorEffect="non-scaling-stroke"
                                                                     style={{ pointerEvents: 'all' }}
                                                                 />
                                                             );
-                                                        });
-                                                    })}
-
-                                                    {/* Legacy Linear Handles */}
-                                                    {!isGraph && m.points.map((p, idx) => {
-                                                        if (idx === m.points.length - 1) return null;
-                                                        const nextP = m.points[idx + 1];
-                                                        return (
-                                                            <line
-                                                                key={`edge-${idx}`}
-                                                                x1={p.x} y1={p.y}
-                                                                x2={nextP.x} y2={nextP.y}
-                                                                stroke="transparent"
-                                                                strokeWidth={Math.max(8, 12 / zoom)}
-                                                                className="cursor-pointer"
-                                                                onMouseDown={(e) => handleEdgeMouseDown(e, m.id, idx)}
-                                                                onContextMenu={(e) => handleEdgeRightClick(e, m.id, idx)}
-                                                                vectorEffect="non-scaling-stroke"
-                                                                style={{ pointerEvents: 'all' }}
-                                                            />
-                                                        );
-                                                    })}
+                                                        })
+                                                    }
                                                 </>
                                             )}
 
@@ -962,6 +988,70 @@ const Canvas = () => {
                                                     vectorEffect="non-scaling-stroke"
                                                 />
                                             ))}
+
+                                            {/* LABELS */}
+                                            {showLabels && (
+                                                <g pointerEvents="none" className="select-none font-sans font-bold" style={{ textShadow: '0px 0px 2px white, 0px 0px 4px white' }}>
+                                                    {m.type === 'shape' && m.labels?.showArea && (
+                                                        <text x={labelPos.x} y={m.labels.showTotalLength ? labelPos.y + (fontSize * 0.7) : labelPos.y} textAnchor="middle" dominantBaseline="middle" fill="black" fontSize={fontSize}>
+                                                            {(() => {
+                                                                let area = getPolygonArea(m.points) / (effectiveScale * effectiveScale);
+                                                                if (m.pitch) area *= Math.sqrt(1 + Math.pow(m.pitch / 12, 2));
+                                                                return formatArea(area);
+                                                            })()}
+                                                        </text>
+                                                    )}
+                                                    {m.labels?.showTotalLength && (
+                                                        <text x={labelPos.x} y={m.type === 'shape' && m.labels.showArea ? labelPos.y - (fontSize * 0.7) : labelPos.y - (m.type === 'line' ? 10/zoom : 0)} textAnchor="middle" dominantBaseline="middle" fill="blue" fontSize={fontSize * 1.1} fontWeight="bold">
+                                                            {(() => {
+                                                                const len = getPathLength([...m.points, (m.type === 'shape' ? m.points[0] : null)].filter(Boolean) as Point[]) / effectiveScale;
+                                                                const feet = Math.floor(len);
+                                                                const inches = Math.round((len - feet) * 12);
+                                                                return `${feet}' ${inches}"`;
+                                                            })()}
+                                                        </text>
+                                                    )}
+                                                    {m.labels?.showEdgeLengths && (() => {
+                                                        const renderEdgeText = (p1: Point, p2: Point, key: string) => {
+                                                            const midX = (p1.x + p2.x) / 2;
+                                                            const midY = (p1.y + p2.y) / 2;
+                                                            const edgeLen = getDistance(p1, p2) / effectiveScale;
+                                                            const ft = Math.floor(edgeLen);
+                                                            const inc = Math.round((edgeLen - ft) * 12);
+                                                            return <text key={key} x={midX} y={midY} textAnchor="middle" dominantBaseline="middle" fill="#4b5563" fontSize={fontSize * 0.8}>{ft}'{inc}"</text>;
+                                                        };
+
+                                                        if (m.type === 'shape') {
+                                                            return m.points.map((p, i) => {
+                                                                const nextP = m.points[(i + 1) % m.points.length];
+                                                                return renderEdgeText(p, nextP, `edge-${i}`);
+                                                            });
+                                                        }
+
+                                                        const isGraph = m.points.some(p => p.connectsTo && p.connectsTo.length > 0);
+                                                        if (isGraph) {
+                                                            const graphLabels: React.ReactNode[] = [];
+                                                            m.points.forEach((p, sourceIdx) => {
+                                                                if (p.connectsTo) {
+                                                                    p.connectsTo.forEach(targetIdx => {
+                                                                        const nextP = m.points[targetIdx];
+                                                                        if (nextP) {
+                                                                            graphLabels.push(renderEdgeText(p, nextP, `edge-${sourceIdx}-${targetIdx}`));
+                                                                        }
+                                                                    });
+                                                                }
+                                                            });
+                                                            return graphLabels;
+                                                        } else {
+                                                            return m.points.map((p, i) => {
+                                                                if (i === m.points.length - 1) return null;
+                                                                const nextP = m.points[i + 1];
+                                                                return renderEdgeText(p, nextP, `edge-${i}`);
+                                                            });
+                                                        }
+                                                    })()}
+                                                </g>
+                                            )}
                                         </g>
                                     );
                                 })}
@@ -992,10 +1082,8 @@ const Canvas = () => {
                                     </g>
                                 )}
 
-                                {/* Floating Ghost Line for Drawing */}
                                 {(activeTool === 'measure' || activeTool === 'line' || branchingFrom) && currentMousePos && (
                                     <g pointerEvents="none">
-                                        {/* If branching, show line from the active branch point */}
                                         {branchingFrom && (
                                             (() => {
                                                 const m = measurements.find(meas => meas.id === branchingFrom.id);
@@ -1012,7 +1100,6 @@ const Canvas = () => {
                                                 );
                                             })()
                                         )}
-                                        {/* If normal drawing, show line from last point */}
                                         {!branchingFrom && points.length > 0 && (
                                             <line
                                                 x1={points[points.length - 1].x} y1={points[points.length - 1].y}
@@ -1024,7 +1111,6 @@ const Canvas = () => {
                                             />
                                         )}
 
-                                        {/* Text Label Logic */}
                                         {(() => {
                                             let startP = null;
                                             if (branchingFrom) {

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { FileX, X } from 'lucide-react';
+import {useState} from 'react';
+import {FileX, X} from 'lucide-react';
 
 export const PDFPageManager = ({
                                    numPages, activePageIndex, onPageChange, onRemovePage

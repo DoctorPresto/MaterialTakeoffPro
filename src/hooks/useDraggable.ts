@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import {useEffect, useState} from 'react';
 
 export const useDraggable = (initialX: number, initialY: number) => {
     const [position, setPosition] = useState({ x: initialX, y: initialY });

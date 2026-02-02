@@ -1,10 +1,24 @@
-import {useState, useMemo} from 'react';
+import {useMemo, useState} from 'react';
 import {useStore} from '../store';
-import {ChevronDown, ChevronRight, Folder, Settings, Trash2, X, GripVertical, Layers, Star, Plus, Edit3} from 'lucide-react';
+import {
+    ChevronDown,
+    ChevronRight,
+    Edit3,
+    Folder,
+    GripVertical,
+    Layers,
+    Plus,
+    Settings,
+    Star,
+    Trash2,
+    X
+} from 'lucide-react';
 import {AssemblyDef, ItemSet, Measurement} from '../types';
 import {SearchableSelector} from './SearchableSelector';
+import {resolveValue} from '../engine';
+import {applyRounding, evaluateFormula} from '../utils/math';
 
-// --- Input Modal for Renaming ---
+//  Input Modal for Renaming 
 const NameModal = ({ isOpen, title, initialValue, onSave, onCancel }: { isOpen: boolean, title: string, initialValue: string, onSave: (val: string) => void, onCancel: () => void }) => {
     const [val, setVal] = useState(initialValue);
     if (!isOpen) return null;
@@ -59,7 +73,7 @@ const CollapsibleItemSet = ({
     onRename: () => void,
     onSaveFavorite: () => void
 }) => {
-    const { materials } = useStore();
+    const { materials, scale, pageScales } = useStore();
     const [isOpen, setIsOpen] = useState(true);
     const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
     const [selectorKey, setSelectorKey] = useState(0);
@@ -172,7 +186,29 @@ const CollapsibleItemSet = ({
                             const def = assemblyDefs.find(d => d.id === inst.assemblyDefId);
                             const isEditing = editingInstanceId === inst.id;
                             const isDragging = draggedAssemblyId === inst.id;
-                            const dynamicNodes = def?.children.filter(c => c.isDynamic && c.variantIds && c.variantIds.length > 0) || [];
+
+                            // Calculate variable context and filter nodes that evaluate to 0
+                            const context: Record<string, number> = {};
+                            if (def) {
+                                def.variables.forEach(v => {
+                                    const source = inst.variableValues[v.id];
+                                    if (source) {
+                                        context[v.name] = resolveValue(source, measurements, scale, pageScales);
+                                    } else {
+                                        context[v.name] = 0;
+                                    }
+                                });
+                            }
+
+                            const dynamicNodes = def?.children.filter(c => {
+                                if (!c.isDynamic || !c.variantIds || c.variantIds.length === 0) return false;
+                                try {
+                                    const qty = applyRounding(evaluateFormula(c.formula, context), c.round);
+                                    return qty > 0;
+                                } catch (e) {
+                                    return false;
+                                }
+                            }) || [];
 
                             return (
                                 <div

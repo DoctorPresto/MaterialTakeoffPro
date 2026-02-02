@@ -8,15 +8,15 @@ import {
     Copy,
     Cuboid,
     Download,
+    GripVertical,
+    Layers,
     Package,
     Pencil,
     Plus,
     Search,
     Trash2,
     Upload,
-    X,
-    Layers,
-    GripVertical
+    X
 } from 'lucide-react';
 import {AssemblyNode} from '../types';
 import {SearchableSelector} from './SearchableSelector';

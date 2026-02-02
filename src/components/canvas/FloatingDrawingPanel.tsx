@@ -1,10 +1,22 @@
-import React, { useMemo, useState } from 'react';
+import React, {useMemo, useState} from 'react';
 import {
-    ChevronDown, ChevronRight, ChevronUp, GripVertical, List, MousePointer2, Move, Ruler, Settings, Spline, Square, Eye, EyeOff
+    ChevronDown,
+    ChevronRight,
+    ChevronUp,
+    Eye,
+    EyeOff,
+    GripVertical,
+    List,
+    MousePointer2,
+    Move,
+    Ruler,
+    Settings,
+    Spline,
+    Square
 } from 'lucide-react';
-import { Measurement } from '../../types';
-import { getGroupColor } from './utils';
-import { useDraggable } from '../../hooks/useDraggable';
+import {Measurement} from '../../types';
+import {getGroupColor} from './utils';
+import {useDraggable} from '../../hooks/useDraggable';
 
 export const FloatingDrawingPanel = ({
                                          activeTool,
@@ -16,6 +28,7 @@ export const FloatingDrawingPanel = ({
                                          onSelectMeasurement,
                                          selectedMeasurement,
                                          onToggleMeasurementVisibility,
+                                         onSetGroupVisibility,
                                          onOpenProperties,
                                          onUpdateMeasurement,
                                          onReorderMeasurements,
@@ -26,6 +39,7 @@ export const FloatingDrawingPanel = ({
     isCollapsed: boolean, onToggleCollapse: () => void, measurements: Measurement[], activePageIndex: number,
     onSelectMeasurement: (id: string) => void, selectedMeasurement: string | null,
     onToggleMeasurementVisibility: (id: string) => void,
+    onSetGroupVisibility: (group: string, hidden: boolean) => void,
     onOpenProperties: (id: string) => void,
     onUpdateMeasurement: (id: string, updates: any) => void,
     onReorderMeasurements: (newGroupOrder: string[]) => void,
@@ -48,7 +62,7 @@ export const FloatingDrawingPanel = ({
         currentPageMeasurements.forEach(m => {
             groups.add(m.group || 'Ungrouped');
         });
-        return Array.from(groups);
+        return Array.from(groups).sort();
     }, [currentPageMeasurements]);
 
     const toggleGroupCollapse = (group: string) => {
@@ -178,6 +192,9 @@ export const FloatingDrawingPanel = ({
                                     const isDraggingGroup = draggedGroup === groupName;
                                     const groupColor = getGroupColor(groupName === 'Ungrouped' ? undefined : groupName, groupColors);
 
+                                    // Check if all items in this group are hidden
+                                    const isGroupHidden = items.length > 0 && items.every(m => m.hidden);
+
                                     return (
                                         <div
                                             key={groupName}
@@ -210,6 +227,18 @@ export const FloatingDrawingPanel = ({
                                                 />
                                                 <span className="flex-1 truncate select-none">{groupName}</span>
                                                 <span className="text-[10px] bg-gray-200 px-1.5 py-0.5 rounded-full">{items.length}</span>
+
+                                                {/* Group Visibility Toggle */}
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onSetGroupVisibility(groupName, !isGroupHidden);
+                                                    }}
+                                                    className={`p-1 rounded hover:bg-gray-200 ${isGroupHidden ? 'text-gray-400' : 'text-gray-600'}`}
+                                                    title={isGroupHidden ? "Show Group" : "Hide Group"}
+                                                >
+                                                    {isGroupHidden ? <EyeOff size={12} /> : <Eye size={12} />}
+                                                </button>
                                             </div>
 
                                             {!isGroupCollapsed && (
@@ -230,7 +259,7 @@ export const FloatingDrawingPanel = ({
                                                             className={`flex items-center justify-between p-1.5 rounded text-xs transition-colors cursor-move ${selectedMeasurement === m.id
                                                                 ? 'bg-blue-100 border border-blue-200'
                                                                 : 'hover:bg-gray-100 border border-transparent'
-                                                            } ${draggedMeasurementId === m.id ? 'opacity-50' : ''}`}
+                                                            } ${draggedMeasurementId === m.id ? 'opacity-50' : ''} ${m.hidden ? 'opacity-50' : ''}`}
                                                             onClick={() => onSelectMeasurement(m.id)}
                                                         >
                                                             <div className="flex items-center gap-2 flex-1 min-w-0">

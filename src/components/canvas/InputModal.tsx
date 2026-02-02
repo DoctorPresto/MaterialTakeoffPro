@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import {useEffect, useState} from 'react';
 
 export const InputModal = ({
                                isOpen, title, label, initialValue, onSave, onCancel, showCheckbox, checkboxLabel, checkboxValue, onCheckboxChange
