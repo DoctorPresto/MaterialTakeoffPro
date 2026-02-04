@@ -1,16 +1,16 @@
 export type Point = {
     x: number;
     y: number;
-    connectsTo?: number[]; // Indices of connected vertices
-    controlPoint?: { x: number; y: number }; // For Bezier curves
+    connectsTo?: number[];
+    controlPoint?: { x: number; y: number };
 };
 
 export type MeasurementType = 'line' | 'shape';
 
 export interface LabelSettings {
     showEdgeLengths?: boolean;
-    showTotalLength?: boolean; // Perimeter for shapes, Length for lines
-    showArea?: boolean;        // Shapes only
+    showTotalLength?: boolean;
+    showArea?: boolean;
 }
 
 export interface Measurement {
@@ -23,8 +23,14 @@ export interface Measurement {
     group?: string;
     rotation?: number;
     hidden?: boolean;
-    pitch?: number; // Rise per 12 inches (e.g., 6 = 6/12 slope)
-    labels?: LabelSettings; // Visibility settings for measurement labels
+    pitch?: number;
+    labels?: LabelSettings;
+}
+
+export interface MaterialVariant {
+    id: string;
+    name: string;
+    properties: Record<string, number>;
 }
 
 export interface MaterialDef {
@@ -33,6 +39,14 @@ export interface MaterialDef {
     name: string;
     uom: string;
     category: string;
+
+    isSpecialOrder?: boolean;
+    reportSku?: string;
+
+    variants?: MaterialVariant[];
+    defaultVariantId?: string;
+
+    properties?: Record<string, number>;
 }
 
 export type VariableType = 'linear' | 'area' | 'count' | 'number' | 'pitch' | 'boolean';
@@ -77,10 +91,20 @@ export interface ProjectAssembly {
     selections?: Record<string, string>;
 }
 
+export interface ManualItem {
+    id: string;
+    sku: string;
+    description: string;
+    quantity: number;
+    uom: string;
+}
+
 export interface ItemSet {
     id: string;
     name: string;
     assemblies: ProjectAssembly[];
+    manualItems: ManualItem[];
+    itemOrder?: string[];
 }
 
 export interface BomLine {

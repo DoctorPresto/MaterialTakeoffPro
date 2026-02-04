@@ -2,11 +2,13 @@ import {AssemblyDef, BomLine, ItemSet, MaterialDef, Measurement, ProjectAssembly
 import {applyRounding, evaluateFormula, getPathLength, getPolygonArea} from './utils/math';
 
 export const resolveValue = (
-    source: VariableSource,
+    source: VariableSource | undefined, // Allow undefined
     measurements: Measurement[],
     globalScale: number,
     pageScales: Record<number, number> = {}
 ): number => {
+    if (!source) return 0;
+
     if (source.type === 'manual') {
         if (typeof source.value === 'string') {
             const parts = source.value.split('/');
@@ -36,7 +38,6 @@ export const resolveValue = (
         if (m.type === 'shape') {
             if (source.property === 'area') {
                 let area = getPolygonArea(m.points) / (effectiveScale * effectiveScale);
-                // Apply Pitch Logic: Area * sqrt(1 + (pitch/12)^2)
                 if (m.pitch && m.pitch > 0) {
                     const slopeFactor = Math.sqrt(1 + Math.pow(m.pitch / 12, 2));
                     area *= slopeFactor;
@@ -80,7 +81,6 @@ export const resolveValue = (
                 let area = 0;
                 if (m.type === 'shape') {
                     area = getPolygonArea(m.points) / (effectiveScale * effectiveScale);
-                    // Apply pitch per measurement in group
                     if (m.pitch && m.pitch > 0) {
                         area *= Math.sqrt(1 + Math.pow(m.pitch / 12, 2));
                     }
@@ -108,38 +108,62 @@ const processNodes = (
 
     for (const node of currentDef.children) {
         if (node.childType === 'material') {
+            // 1. Resolve Target Material First
+            let targetMaterialId = node.childId;
+            if (node.isDynamic) {
+                if (selections[node.id]) {
+                    targetMaterialId = selections[node.id];
+                } else if (node.defaultVariantId) {
+                    targetMaterialId = node.defaultVariantId;
+                }
+            }
+
+            const mat = materials.find(m => m.id === targetMaterialId);
+            const formulaContext = { ...enhancedContext };
+
+            // 2. Resolve Variant Selection (for Special Order items)
+            let selectedVariant = null;
+            if (mat && mat.variants && mat.variants.length > 0) {
+                let variantId = selections[`${node.id}_variant`];
+                if (!variantId && mat.defaultVariantId) {
+                    variantId = mat.defaultVariantId;
+                }
+                if (variantId) {
+                    selectedVariant = mat.variants.find(v => v.id === variantId);
+                    if (selectedVariant && selectedVariant.properties) {
+                        Object.assign(formulaContext, selectedVariant.properties);
+                    }
+                }
+            } else if (mat && mat.properties) {
+                Object.assign(formulaContext, mat.properties);
+            }
+
+            // 3. Evaluate Formula
             const quantity = applyRounding(
-                evaluateFormula(node.formula, enhancedContext),
+                evaluateFormula(node.formula, formulaContext),
                 node.round
             );
 
-            if (quantity > 0) {
-                let targetMaterialId = node.childId;
-                if (node.isDynamic) {
-                    if (selections[node.id]) {
-                        targetMaterialId = selections[node.id];
-                    } else if (node.defaultVariantId) {
-                        targetMaterialId = node.defaultVariantId;
-                    }
-                }
+            // 4. Generate BOM Line
+            if (quantity > 0 && mat) {
+                const materialName = node.alias || mat.name;
+                // Use Report SKU if provided (Special Order), otherwise internal SKU
+                const displaySku = (mat.isSpecialOrder && mat.reportSku) ? mat.reportSku : mat.sku;
+                // use variant name if applicable
+                const displayName = selectedVariant ? `${selectedVariant.name}` : materialName;
 
-                const mat = materials.find(m => m.id === targetMaterialId);
-                if (mat) {
-                    const materialName = node.alias || mat.name;
+                results.push({
+                    sku: displaySku,
+                    name: displayName,
+                    quantity,
+                    uom: mat.uom,
+                    sourceItemSet: itemSetName
+                });
 
-                    results.push({
-                        sku: mat.sku,
-                        name: materialName,
-                        quantity,
-                        uom: mat.uom,
-                        sourceItemSet: itemSetName
-                    });
-
-                    enhancedContext[materialName] = (enhancedContext[materialName] || 0) + quantity;
-                    enhancedContext[mat.sku] = (enhancedContext[mat.sku] || 0) + quantity;
-                    if (node.alias) {
-                        enhancedContext[node.alias] = (enhancedContext[node.alias] || 0) + quantity;
-                    }
+                enhancedContext[materialName] = (enhancedContext[materialName] || 0) + quantity;
+                enhancedContext[displaySku] = (enhancedContext[displaySku] || 0) + quantity;
+                if (node.alias) {
+                    enhancedContext[node.alias] = (enhancedContext[node.alias] || 0) + quantity;
                 }
             }
         } else if (node.childType === 'assembly') {
@@ -195,10 +219,53 @@ export const generateGlobalBOM = (
     let fullBOM: BomLine[] = [];
 
     itemSets.forEach(set => {
-        set.assemblies.forEach(instance => {
-            const lines = generateBOM(instance, allDefs, measurements, materials, scale, set.name, pageScales);
-            fullBOM = [...fullBOM, ...lines];
+        const order = set.itemOrder || [];
+        const assemblyMap = new Map(set.assemblies.map(a => [a.id, a]));
+        const manualMap = new Map((set.manualItems || []).map(m => [m.id, m]));
+        const processedIds = new Set<string>();
+
+        // 1. Process Ordered Items
+        order.forEach(id => {
+            if (assemblyMap.has(id)) {
+                const instance = assemblyMap.get(id)!;
+                const lines = generateBOM(instance, allDefs, measurements, materials, scale, set.name, pageScales);
+                fullBOM.push(...lines);
+                processedIds.add(id);
+            } else if (manualMap.has(id)) {
+                const item = manualMap.get(id)!;
+                fullBOM.push({
+                    sku: item.sku,
+                    name: item.description,
+                    quantity: item.quantity,
+                    uom: item.uom,
+                    sourceItemSet: set.name
+                });
+                processedIds.add(id);
+            }
         });
+
+
+        if (set.assemblies) {
+            set.assemblies.forEach(instance => {
+                if (!processedIds.has(instance.id)) {
+                    const lines = generateBOM(instance, allDefs, measurements, materials, scale, set.name, pageScales);
+                    fullBOM.push(...lines);
+                }
+            });
+        }
+        if (set.manualItems) {
+            set.manualItems.forEach(item => {
+                if (!processedIds.has(item.id)) {
+                    fullBOM.push({
+                        sku: item.sku,
+                        name: item.description,
+                        quantity: item.quantity,
+                        uom: item.uom,
+                        sourceItemSet: set.name
+                    });
+                }
+            });
+        }
     });
 
     return fullBOM;

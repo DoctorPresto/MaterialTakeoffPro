@@ -43,7 +43,7 @@ const MaterialsTab = () => {
                                             <thead>
                                             <tr className="text-left text-gray-500">
                                                 <th className="pb-2 w-32">SKU</th>
-                                                <th className="pb-2">Material Name</th>
+                                                <th className="pb-2">Description</th>
                                                 <th className="pb-2 w-20 text-center">UOM</th>
                                                 <th className="pb-2 text-right">Qty</th>
                                             </tr>

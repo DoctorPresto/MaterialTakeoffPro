@@ -2,20 +2,8 @@ import {create} from 'zustand';
 import {persist} from 'zustand/middleware';
 import {v4 as uuidv4} from 'uuid';
 import {
-    AssemblyDef,
-    AssemblyNode,
-    AssemblyVariable,
-    BuildingData,
-    EstimateFile,
-    ItemSet,
-    MaterialDef,
-    Measurement,
-    MeasurementType,
-    Point,
-    ProjectAssembly,
-    ProjectInfo,
-    RecentFile,
-    VariableSource
+    AssemblyDef, AssemblyNode, AssemblyVariable, BuildingData, EstimateFile, ItemSet, ManualItem, MaterialDef, Measurement,
+    MeasurementType, Point, ProjectAssembly, ProjectInfo, RecentFile, VariableSource
 } from './types';
 
 const generateUniqueName = (baseName: string, existingNames: string[]): string => {
@@ -57,7 +45,7 @@ interface AppState {
     lastModified: number;
     scale: number;
     pageScales: Record<number, number>;
-    isScaleLocked: boolean; // NEW: Scale Lock State
+    isScaleLocked: boolean;
     activePageIndex: number;
     activeTool: 'select' | 'line' | 'shape' | 'measure';
     activeWizardTool: string | null;
@@ -80,7 +68,7 @@ interface AppState {
     updateBuildingData: (updates: Partial<BuildingData>) => void;
     setScale: (s: number) => void;
     setPageScale: (pageIndex: number, scale: number | undefined) => void;
-    toggleScaleLock: () => void; // NEW: Action
+    toggleScaleLock: () => void;
     setPageIndex: (index: number) => void;
     setTool: (t: 'select' | 'line' | 'shape' | 'measure') => void;
     setWizardTool: (tag: string | null) => void;
@@ -122,6 +110,7 @@ interface AppState {
     setItemSets: (itemSets: ItemSet[]) => void;
     updateItemSet: (id: string, updates: Partial<ItemSet>) => void;
     deleteItemSet: (id: string) => void;
+    reorderItemsInSet: (setId: string, newOrder: string[]) => void; // New Action
 
     saveItemSetAsFavorite: (id: string, name: string) => void;
     addItemSetFromFavorite: (favoriteId: string) => void;
@@ -129,8 +118,12 @@ interface AppState {
 
     addInstanceToSet: (setId: string, defId: string) => void;
     deleteInstanceFromSet: (setId: string, instanceId: string) => void;
-    updateInstanceVariable: (setId: string, instanceId: string, varId: string, source: VariableSource) => void;
-    updateInstanceSelection: (setId: string, instanceId: string, nodeId: string, selectionId: string) => void;
+    updateInstanceVariable: (setId: string, instId: string, varId: string, source: VariableSource) => void;
+    updateInstanceSelection: (setId: string, instId: string, nodeId: string, selectionId: string) => void;
+
+    addManualItemToSet: (setId: string, item: Omit<ManualItem, 'id'>) => void;
+    updateManualItem: (setId: string, itemId: string, updates: Partial<ManualItem>) => void;
+    deleteManualItem: (setId: string, itemId: string) => void;
 }
 
 export const useStore = create<AppState>()(
@@ -227,13 +220,25 @@ export const useStore = create<AppState>()(
                 scale: 1, pageScales: {}, isScaleLocked: false, activePageIndex: 0, activeMeasurementId: null, measurements: [], itemSets: [], groupColors: {}, zoom: 1, pan: {x: 0, y: 0}, past: [], future: []
             }),
             closeEstimate: () => set({estimateName: null, past: [], future: []}),
+
             loadEstimateFromFile: (file) => {
                 const newRecent = {id: uuidv4(), name: file.meta.name, lastOpened: Date.now(), data: file};
+                const loadedSets = file.data.itemSets.map(s => {
+                    const manualItems = s.manualItems || [];
+                    const assemblies = s.assemblies || [];
+                    // Ensure itemOrder is valid, or create one if missing
+                    let itemOrder = s.itemOrder || [];
+                    if (itemOrder.length === 0) {
+                        itemOrder = [...assemblies.map(a => a.id), ...manualItems.map(m => m.id)];
+                    }
+                    return { ...s, manualItems, itemOrder };
+                });
                 set(state => ({
-                    estimateName: file.meta.name, projectInfo: file.data.projectInfo, buildingData: file.data.buildingData, lastModified: file.meta.lastModified, scale: file.data.scale, pageScales: file.data.pageScales || {}, measurements: file.data.measurements, itemSets: file.data.itemSets, groupColors: (file.data as any).groupColors || {}, pdfFile: file.data.pdfBase64,
+                    estimateName: file.meta.name, projectInfo: file.data.projectInfo, buildingData: file.data.buildingData, lastModified: file.meta.lastModified, scale: file.data.scale, pageScales: file.data.pageScales || {}, measurements: file.data.measurements, itemSets: loadedSets, groupColors: (file.data as any).groupColors || {}, pdfFile: file.data.pdfBase64,
                     recentFiles: [newRecent, ...state.recentFiles.filter(f => f.name !== file.meta.name)].slice(0, 5), activePageIndex: 0, activeMeasurementId: null, zoom: 1, pan: {x: 0, y: 0}, past: [], future: []
                 }));
             },
+
             loadRecent: (id) => { const file = get().recentFiles.find(f => f.id === id); if (file) get().loadEstimateFromFile(file.data); },
             saveEstimate: () => {
                 const s = get();
@@ -358,19 +363,54 @@ export const useStore = create<AppState>()(
             removeNodeFromDef: (defId, nodeId) => { get().commitHistory(); set((s) => ({ assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : { ...d, children: d.children.filter(c => c.id !== nodeId) }) })); },
             reorderNodeInDef: (defId, nodeId, direction) => { get().commitHistory(); set(s => { const def = s.assemblyDefs.find(d => d.id === defId); if (!def) return s; const index = def.children.findIndex(c => c.id === nodeId); if (index === -1) return s; const newChildren = [...def.children]; const targetIndex = direction === 'up' ? index - 1 : index + 1; if (targetIndex >= 0 && targetIndex < newChildren.length) { const [removed] = newChildren.splice(index, 1); newChildren.splice(targetIndex, 0, removed); return { assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : { ...d, children: newChildren }) }; } return s; }); },
 
-            addItemSet: (name) => { get().commitHistory(); set(s => ({itemSets: [...s.itemSets, {id: uuidv4(), name, assemblies: []}]})); },
+            addItemSet: (name) => { get().commitHistory(); set(s => ({itemSets: [...s.itemSets, {id: uuidv4(), name, assemblies: [], manualItems: [], itemOrder: []}]})); },
             renameItemSet: (id, newName) => { get().commitHistory(); set(s => ({itemSets: s.itemSets.map(i => i.id === id ? {...i, name: newName} : i)})); },
             setItemSets: (sets) => { get().commitHistory(); set({ itemSets: sets }); },
             updateItemSet: (id, updates) => { get().commitHistory(); set(s => ({itemSets: s.itemSets.map(i => i.id === id ? {...i, ...updates} : i)})); },
             deleteItemSet: (id) => { get().commitHistory(); set(s => ({itemSets: s.itemSets.filter(i => i.id !== id)})); },
-            saveItemSetAsFavorite: (id, name) => { set(s => { const original = s.itemSets.find(i => i.id === id); if (!original) return s; const favorite: ItemSet = { ...original, id: uuidv4(), name: name || original.name, assemblies: original.assemblies.map(a => ({...a, id: uuidv4()})) }; return { favoriteItemSets: [...s.favoriteItemSets, favorite] }; }); },
-            addItemSetFromFavorite: (favId) => { get().commitHistory(); set(s => { const template = s.favoriteItemSets.find(f => f.id === favId); if (!template) return s; const newSet: ItemSet = { ...template, id: uuidv4(), name: template.name, assemblies: template.assemblies.map(a => ({...a, id: uuidv4()})) }; return { itemSets: [...s.itemSets, newSet] }; }); },
+            reorderItemsInSet: (setId, newOrder) => {
+                get().commitHistory();
+                set(s => ({
+                    itemSets: s.itemSets.map(set => set.id === setId ? { ...set, itemOrder: newOrder } : set)
+                }));
+            },
+
+            saveItemSetAsFavorite: (id, name) => { set(s => { const original = s.itemSets.find(i => i.id === id); if (!original) return s; const favorite: ItemSet = { ...original, id: uuidv4(), name: name || original.name, assemblies: original.assemblies.map(a => ({...a, id: uuidv4()})), manualItems: (original.manualItems || []).map(m => ({...m, id: uuidv4()})), itemOrder: [] }; return { favoriteItemSets: [...s.favoriteItemSets, favorite] }; }); },
+            addItemSetFromFavorite: (favId) => { get().commitHistory(); set(s => { const template = s.favoriteItemSets.find(f => f.id === favId); if (!template) return s; const newSet: ItemSet = { ...template, id: uuidv4(), name: template.name, assemblies: template.assemblies.map(a => ({...a, id: uuidv4()})), manualItems: (template.manualItems || []).map(m => ({...m, id: uuidv4()})), itemOrder: [] };
+                // Rebuild order
+                if (!newSet.itemOrder || newSet.itemOrder.length === 0) {
+                    newSet.itemOrder = [...newSet.assemblies.map(a => a.id), ...newSet.manualItems.map(m => m.id)];
+                }
+                return { itemSets: [...s.itemSets, newSet] };
+            }); },
             deleteFavoriteItemSet: (favId) => { set(s => ({favoriteItemSets: s.favoriteItemSets.filter(f => f.id !== favId)})); },
 
-            addInstanceToSet: (setId, defId) => { get().commitHistory(); set(s => { const def = s.assemblyDefs.find(d => d.id === defId); if (!def) return s; const initialVars: Record<string, VariableSource> = {}; def.variables.forEach(v => { let defaultValue: number | string = 0; if (v.type === 'pitch') defaultValue = ''; else if (v.type === 'boolean') defaultValue = 0; else if (v.type === 'count') { defaultValue = 1;} initialVars[v.id] = {type: 'manual', value: defaultValue}; }); const newInstance: ProjectAssembly = { id: uuidv4(), assemblyDefId: defId, name: def.name, variableValues: initialVars, selections: {} }; return { itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, assemblies: [...set.assemblies, newInstance] }) }; }); },
-            deleteInstanceFromSet: (setId, instId) => { get().commitHistory(); set(s => ({ itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, assemblies: set.assemblies.filter(a => a.id !== instId) }) })); },
+            addInstanceToSet: (setId, defId) => { get().commitHistory(); set(s => { const def = s.assemblyDefs.find(d => d.id === defId); if (!def) return s; const initialVars: Record<string, VariableSource> = {}; def.variables.forEach(v => { let defaultValue: number | string = 0; if (v.type === 'pitch') defaultValue = ''; else if (v.type === 'boolean') defaultValue = 0; else if (v.type === 'count') { defaultValue = 1;} initialVars[v.id] = {type: 'manual', value: defaultValue}; }); const newInstance: ProjectAssembly = { id: uuidv4(), assemblyDefId: defId, name: def.name, variableValues: initialVars, selections: {} };
+                return { itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, assemblies: [...set.assemblies, newInstance], itemOrder: [...(set.itemOrder || []), newInstance.id] }) };
+            }); },
+            deleteInstanceFromSet: (setId, instId) => { get().commitHistory(); set(s => ({ itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, assemblies: set.assemblies.filter(a => a.id !== instId), itemOrder: (set.itemOrder || []).filter(id => id !== instId) }) })); },
             updateInstanceVariable: (setId, instId, varId, src) => { get().commitHistory(); set(s => ({ itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, assemblies: set.assemblies.map(inst => inst.id !== instId ? inst : { ...inst, variableValues: {...inst.variableValues, [varId]: src} }) }) })); },
-            updateInstanceSelection: (setId, instId, nodeId, selId) => { get().commitHistory(); set(s => ({ itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, assemblies: set.assemblies.map(inst => inst.id !== instId ? inst : { ...inst, selections: { ...(inst.selections || {}), [nodeId]: selId } }) }) })); }
+            updateInstanceSelection: (setId, instId, nodeId, selId) => { get().commitHistory(); set(s => ({ itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, assemblies: set.assemblies.map(inst => inst.id !== instId ? inst : { ...inst, selections: { ...(inst.selections || {}), [nodeId]: selId } }) }) })); },
+
+            addManualItemToSet: (setId, item) => {
+                get().commitHistory();
+                set(s => {
+                    const newItem = { ...item, id: uuidv4() };
+                    return { itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, manualItems: [...(set.manualItems || []), newItem], itemOrder: [...(set.itemOrder || []), newItem.id] }) };
+                });
+            },
+            updateManualItem: (setId, itemId, updates) => {
+                get().commitHistory();
+                set(s => ({
+                    itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, manualItems: (set.manualItems || []).map(m => m.id === itemId ? { ...m, ...updates } : m) })
+                }));
+            },
+            deleteManualItem: (setId, itemId) => {
+                get().commitHistory();
+                set(s => ({
+                    itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, manualItems: (set.manualItems || []).filter(m => m.id !== itemId), itemOrder: (set.itemOrder || []).filter(id => id !== itemId) })
+                }));
+            }
         }),
         {
             name: 'takeoff-pro-db',

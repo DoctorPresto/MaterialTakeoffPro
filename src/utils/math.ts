@@ -110,7 +110,7 @@ export const getPolygonCentroid = (points: Point[]): Point => {
     return { x: x / area, y: y / area };
 };
 
-// HELPER: Evaluate a formula using MathJS with your custom syntax support
+// Evaluate a formula using MathJS with custom syntax support
 export const evaluateFormula = (formula: string, context: Record<string, number>): number => {
     try {
         const scope = { ...context };
@@ -123,9 +123,6 @@ export const evaluateFormula = (formula: string, context: Record<string, number>
             }
         });
 
-        // 2. Handle Custom "if Condition (Result)" Syntax
-        // Regex looks for: if [space] condition [space optional] (result)
-        // We use a non-greedy match for the condition (.+?) to stop at the first open parenthesis of the result group.
         const ifMatch = formula.match(/^if\s+(.+?)\s*\((.+)\)\s*$/i);
 
         if (ifMatch) {
