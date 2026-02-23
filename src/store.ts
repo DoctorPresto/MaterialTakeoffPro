@@ -1,277 +1,517 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { v4 as uuidv4 } from 'uuid';
-import { 
-  Measurement, MeasurementType, Point, 
-  AssemblyDef, MaterialDef, ProjectAssembly, 
-  VariableSource, AssemblyNode, AssemblyVariable, ItemSet
+import {create} from 'zustand';
+import {persist} from 'zustand/middleware';
+import {v4 as uuidv4} from 'uuid';
+import {
+    AssemblyDef, AssemblyNode, AssemblyVariable, BuildingData, EstimateFile, ItemSet, ManualItem, MaterialDef, Measurement,
+    MeasurementType, Point, ProjectAssembly, ProjectInfo, RecentFile, VariableSource
 } from './types';
+import { getPathLength, getSlopeMultiplier, getPlanHipToTrueHipMultiplier } from './utils/math';
+
+const generateUniqueName = (baseName: string, existingNames: string[]): string => {
+    if (!existingNames.includes(baseName)) return baseName;
+    let counter = 1;
+    let uniqueName = `${baseName} ${counter}`;
+    while (existingNames.includes(uniqueName)) {
+        counter++;
+        uniqueName = `${baseName} ${counter}`;
+    }
+    return uniqueName;
+};
+
+interface HistoryState {
+    materials: MaterialDef[];
+    assemblyDefs: AssemblyDef[];
+    projectInfo: ProjectInfo;
+    buildingData: BuildingData;
+    measurements: Measurement[];
+    itemSets: ItemSet[];
+    groupColors: Record<string, string>;
+    pageScales: Record<number, number>;
+}
+
+// DEFINING WIZARD STEP TYPE
+export type WizardStepType = 'none' | 'profile' | 'foundation' | 'framing' | 'roof';
 
 interface AppState {
-  // --- Config ---
-  scale: number;
-  activePageIndex: number;
-  activeTool: 'select' | 'line' | 'shape';
-  isCalibrating: boolean;
-  
-  // --- Viewport ---
-  zoom: number;
-  pan: { x: number; y: number };
+    past: HistoryState[];
+    future: HistoryState[];
+    undo: () => void;
+    redo: () => void;
+    commitHistory: () => void;
 
-  // --- Data ---
-  measurements: Measurement[];
-  materials: MaterialDef[];
-  assemblyDefs: AssemblyDef[];
-  itemSets: ItemSet[];
-  
-  // --- Actions ---
-  setScale: (s: number) => void;
-  setPageIndex: (index: number) => void;
-  setTool: (t: 'select' | 'line' | 'shape') => void;
-  setIsCalibrating: (status: boolean) => void;
-  setViewport: (zoom: number, pan: { x: number, y: number }) => void;
-  
-  addMeasurement: (type: MeasurementType, points: Point[]) => void;
-  deleteMeasurement: (id: string) => void;
+    materials: MaterialDef[];
+    assemblyDefs: AssemblyDef[];
+    recentFiles: RecentFile[];
+    estimateName: string | null;
+    projectInfo: ProjectInfo;
+    buildingData: BuildingData;
+    pdfFile: string | null;
+    lastModified: number;
+    scale: number;
+    pageScales: Record<number, number>;
+    isScaleLocked: boolean;
+    activePageIndex: number;
+    activeTool: 'select' | 'line' | 'shape' | 'measure';
+    activeWizardTool: string | null;
+    activeMeasurementId: string | null;
+    isCalibrating: boolean;
+    zoom: number;
+    pan: { x: number; y: number };
+    measurements: Measurement[];
+    itemSets: ItemSet[];
+    favoriteItemSets: ItemSet[];
+    groupColors: Record<string, string>;
 
-  // Material Actions
-  addMaterial: (mat: Omit<MaterialDef, 'id'>) => void;
-  updateMaterial: (id: string, updates: Partial<MaterialDef>) => void;
-  deleteMaterial: (id: string) => void;
-  cloneMaterial: (id: string) => void;
+    // NEW: Global Wizard Step State
+    activeWizardStep: WizardStepType;
+    setWizardStep: (step: WizardStepType) => void;
 
-  // Assembly Definition Actions
-  addAssemblyDef: (name: string, category: string) => void;
-  updateAssemblyDef: (id: string, updates: Partial<AssemblyDef>) => void;
-  deleteAssemblyDef: (id: string) => void;
-  cloneAssemblyDef: (id: string) => void;
+    createEstimate: () => void;
+    closeEstimate: () => void;
+    saveEstimate: () => void;
+    loadEstimateFromFile: (fileData: EstimateFile) => void;
+    loadRecent: (id: string) => void;
 
-  addVariableToDef: (defId: string, name: string, type: AssemblyVariable['type']) => void;
-  deleteVariableFromDef: (defId: string, varId: string) => void; // NEW
+    updateProjectInfo: (updates: Partial<ProjectInfo>) => void;
+    updateBuildingData: (updates: Partial<BuildingData>) => void;
+    setScale: (s: number) => void;
+    setPageScale: (pageIndex: number, scale: number | undefined) => void;
+    toggleScaleLock: () => void;
+    setPageIndex: (index: number) => void;
+    setTool: (t: 'select' | 'line' | 'shape' | 'measure') => void;
+    setWizardTool: (tag: string | null) => void;
+    setActiveMeasurement: (id: string | null) => void;
+    setIsCalibrating: (status: boolean) => void;
+    setViewport: (zoom: number, pan: { x: number, y: number }) => void;
 
-  addNodeToDef: (defId: string, node: Omit<AssemblyNode, 'id'>) => void;
-  updateNodeInDef: (defId: string, nodeId: string, updates: Partial<AssemblyNode>) => void; // NEW
-  removeNodeFromDef: (defId: string, nodeId: string) => void;
+    addMeasurement: (type: MeasurementType, points: Point[], name: string, tags?: string[], extraProps?: Partial<Measurement>) => void;
+    updateMeasurementTransient: (id: string, updates: Partial<Measurement>) => void;
+    updateMeasurement: (id: string, updates: Partial<Measurement>) => void;
+    deleteMeasurement: (id: string) => void;
+    setMeasurements: (measurements: Measurement[]) => void;
+    setGroupColor: (group: string, color: string) => void;
+    setGroupVisibility: (group: string | undefined, hidden: boolean) => void;
+    deletePoint: (measurementId: string, pointIndex: number) => void;
+    insertPointAfter: (measurementId: string, pointIndex: number, clickPoint?: Point) => void;
 
-  // Item Set & Instance Actions
-  addItemSet: (name: string) => void;
-  deleteItemSet: (id: string) => void;
-  
-  addInstanceToSet: (setId: string, defId: string) => void;
-  deleteInstanceFromSet: (setId: string, instanceId: string) => void;
-  updateInstanceVariable: (setId: string, instanceId: string, varId: string, source: VariableSource) => void;
+    addMaterial: (mat: Omit<MaterialDef, 'id'>) => void;
+    importMaterials: (mats: MaterialDef[]) => void;
+    updateMaterial: (id: string, updates: Partial<MaterialDef>) => void;
+    deleteMaterial: (id: string) => void;
+    cloneMaterial: (id: string) => void;
+
+    addAssemblyDef: (name: string, category: string) => void;
+    updateAssemblyDef: (id: string, updates: Partial<AssemblyDef>) => void;
+    deleteAssemblyDef: (id: string) => void;
+    cloneAssemblyDef: (id: string) => void;
+    importAssemblyDefs: (defs: AssemblyDef[]) => void;
+
+    addVariableToDef: (defId: string, name: string, type: AssemblyVariable['type']) => void;
+    deleteVariableFromDef: (defId: string, varId: string) => void;
+    addNodeToDef: (defId: string, node: Omit<AssemblyNode, 'id'>) => void;
+    updateNodeInDef: (defId: string, nodeId: string, updates: Partial<AssemblyNode>) => void;
+    removeNodeFromDef: (defId: string, nodeId: string) => void;
+    reorderNodeInDef: (defId: string, nodeId: string, direction: 'up' | 'down') => void;
+
+    addItemSet: (name: string) => void;
+    renameItemSet: (id: string, newName: string) => void;
+    setItemSets: (itemSets: ItemSet[]) => void;
+    updateItemSet: (id: string, updates: Partial<ItemSet>) => void;
+    deleteItemSet: (id: string) => void;
+    reorderItemsInSet: (setId: string, newOrder: string[]) => void;
+
+    saveItemSetAsFavorite: (id: string, name: string) => void;
+    addItemSetFromFavorite: (favoriteId: string) => void;
+    deleteFavoriteItemSet: (favoriteId: string) => void;
+
+    addInstanceToSet: (setId: string, defId: string) => void;
+    deleteInstanceFromSet: (setId: string, instanceId: string) => void;
+    updateInstanceVariable: (setId: string, instId: string, varId: string, source: VariableSource) => void;
+    updateInstanceSelection: (setId: string, instId: string, nodeId: string, selectionId: string) => void;
+
+    addManualItemToSet: (setId: string, item: Omit<ManualItem, 'id'>) => void;
+    updateManualItem: (setId: string, itemId: string, updates: Partial<ManualItem>) => void;
+    deleteManualItem: (setId: string, itemId: string) => void;
 }
 
 export const useStore = create<AppState>()(
-  persist(
-    (set, get) => ({
-      scale: 1, 
-      activePageIndex: 0,
-      activeTool: 'select',
-      isCalibrating: false,
-      zoom: 1,
-      pan: { x: 0, y: 0 },
-      
-      measurements: [],
-      materials: [],
-      assemblyDefs: [],
-      itemSets: [],
+    persist(
+        (set, get) => ({
+            past: [],
+            future: [],
+            materials: [],
+            assemblyDefs: [],
+            recentFiles: [],
+            estimateName: null,
+            pdfFile: null,
+            lastModified: 0,
+            projectInfo: {projectName: "New Project", customerName: "", notes: "", files: []},
+            buildingData: {
+                icfFoundation: false, foundationPerimeterId: null, foundationAreaId: null, hasGarage: false, garageShapeId: null,
+                roofFlatArea: 0, numPlanes: 0, numPeaks: 0, valleyLength: 0,
+                wasteFactorProfile: 'pro',
+                foundationWallHeight: 8, foundationCorners: 4,
+                mainFloorPerimeter: 0, mainFloorGrossWallArea: 0, mainFloorNetWallArea: 0,
+                mainFloorCorners: 4, mainFloorIntersections: 0, mainFloorIntWallLength4: 0, mainFloorIntWallLength6: 0,
+                roofPitch: 4, numPitches: 1, roofRidgeLength: 0, roofHipLength: 0, roofEaveLength: 0, roofGableLength: 0
+            },
+            scale: 1,
+            pageScales: {},
+            isScaleLocked: false,
+            activePageIndex: 0,
+            activeTool: 'select',
+            activeWizardTool: null,
+            activeMeasurementId: null,
+            isCalibrating: false,
+            zoom: 1,
+            pan: {x: 0, y: 0},
+            measurements: [],
+            itemSets: [],
+            favoriteItemSets: [],
+            groupColors: {},
 
-      setScale: (scale) => set({ scale }),
-      setPageIndex: (index) => set({ activePageIndex: Math.max(0, index) }),
-      setTool: (activeTool) => set({ activeTool, isCalibrating: false }),
-      setIsCalibrating: (isCalibrating) => set({ isCalibrating, activeTool: 'select' }),
-      setViewport: (zoom, pan) => set({ zoom, pan }),
+            activeWizardStep: 'none',
 
-      addMeasurement: (type, points) => {
-        const { activePageIndex, measurements } = get();
-        const newMeasurement: Measurement = {
-          id: uuidv4(),
-          name: `${type === 'line' ? 'Line' : 'Shape'} ${measurements.length + 1}`,
-          type,
-          points,
-          pageIndex: activePageIndex
-        };
-        set({ measurements: [...measurements, newMeasurement] });
-      },
+            commitHistory: () => set((state) => {
+                const current: HistoryState = {
+                    materials: state.materials,
+                    assemblyDefs: state.assemblyDefs,
+                    projectInfo: state.projectInfo,
+                    buildingData: state.buildingData,
+                    measurements: state.measurements,
+                    itemSets: state.itemSets,
+                    groupColors: state.groupColors,
+                    pageScales: state.pageScales
+                };
+                const newPast = [...state.past, current].slice(-50);
+                return { past: newPast, future: [] };
+            }),
 
-      deleteMeasurement: (id) => set((state) => ({
-        measurements: state.measurements.filter(m => m.id !== id)
-      })),
+            undo: () => set((state) => {
+                if (state.past.length === 0) return state;
+                const previous = state.past[state.past.length - 1];
+                const newPast = state.past.slice(0, -1);
+                const current: HistoryState = {
+                    materials: state.materials,
+                    assemblyDefs: state.assemblyDefs,
+                    projectInfo: state.projectInfo,
+                    buildingData: state.buildingData,
+                    measurements: state.measurements,
+                    itemSets: state.itemSets,
+                    groupColors: state.groupColors,
+                    pageScales: state.pageScales
+                };
+                return {
+                    past: newPast,
+                    future: [current, ...state.future],
+                    ...previous
+                };
+            }),
 
-      // --- Material CRUD ---
-      addMaterial: (mat) => set((state) => ({
-        materials: [...state.materials, { ...mat, id: uuidv4() }]
-      })),
+            redo: () => set((state) => {
+                if (state.future.length === 0) return state;
+                const next = state.future[0];
+                const newFuture = state.future.slice(1);
+                const current: HistoryState = {
+                    materials: state.materials,
+                    assemblyDefs: state.assemblyDefs,
+                    projectInfo: state.projectInfo,
+                    buildingData: state.buildingData,
+                    measurements: state.measurements,
+                    itemSets: state.itemSets,
+                    groupColors: state.groupColors,
+                    pageScales: state.pageScales
+                };
+                return {
+                    past: [...state.past, current],
+                    future: newFuture,
+                    ...next
+                };
+            }),
 
-      updateMaterial: (id, updates) => set((state) => ({
-        materials: state.materials.map(m => m.id === id ? { ...m, ...updates } : m)
-      })),
+            createEstimate: () => set({
+                estimateName: "Untitled", pdfFile: null, lastModified: Date.now(),
+                projectInfo: {projectName: "New Project", customerName: "", notes: "", files: []},
+                buildingData: {
+                    icfFoundation: false, foundationPerimeterId: null, foundationAreaId: null, hasGarage: false, garageShapeId: null,
+                    roofFlatArea: 0, numPlanes: 0, numPeaks: 0, valleyLength: 0,
+                    wasteFactorProfile: 'pro', foundationWallHeight: 8, foundationCorners: 4,
+                    mainFloorPerimeter: 0, mainFloorGrossWallArea: 0, mainFloorNetWallArea: 0,
+                    mainFloorCorners: 4, mainFloorIntersections: 0, mainFloorIntWallLength4: 0, mainFloorIntWallLength6: 0,
+                    roofPitch: 4, numPitches: 1, roofRidgeLength: 0, roofHipLength: 0, roofEaveLength: 0, roofGableLength: 0
+                },
+                scale: 1, pageScales: {}, isScaleLocked: false, activePageIndex: 0, activeMeasurementId: null, measurements: [], itemSets: [], groupColors: {}, zoom: 1, pan: {x: 0, y: 0}, past: [], future: [], activeWizardStep: 'none'
+            }),
+            closeEstimate: () => set({estimateName: null, past: [], future: [], activeWizardStep: 'none'}),
 
-      deleteMaterial: (id) => set((state) => ({
-        materials: state.materials.filter(m => m.id !== id)
-      })),
+            loadEstimateFromFile: (file) => {
+                const newRecent = {id: uuidv4(), name: file.meta.name, lastOpened: Date.now(), data: file};
+                const loadedSets = file.data.itemSets.map(s => {
+                    const manualItems = s.manualItems || [];
+                    const assemblies = s.assemblies || [];
+                    let itemOrder = s.itemOrder || [];
+                    if (itemOrder.length === 0) {
+                        itemOrder = [...assemblies.map(a => a.id), ...manualItems.map(m => m.id)];
+                    }
+                    return { ...s, manualItems, itemOrder };
+                });
+                set(state => ({
+                    estimateName: file.meta.name, projectInfo: file.data.projectInfo, buildingData: file.data.buildingData, lastModified: file.meta.lastModified, scale: file.data.scale, pageScales: file.data.pageScales || {}, measurements: file.data.measurements, itemSets: loadedSets, groupColors: (file.data as any).groupColors || {}, pdfFile: file.data.pdfBase64,
+                    recentFiles: [newRecent, ...state.recentFiles.filter(f => f.name !== file.meta.name)].slice(0, 5), activePageIndex: 0, activeMeasurementId: null, zoom: 1, pan: {x: 0, y: 0}, past: [], future: [], activeWizardStep: 'none'
+                }));
+            },
 
-      cloneMaterial: (id) => set((state) => {
-        const original = state.materials.find(m => m.id === id);
-        if (!original) return state;
-        return {
-          materials: [...state.materials, { ...original, id: uuidv4(), name: `${original.name} (Copy)` }]
-        };
-      }),
+            loadRecent: (id) => { const file = get().recentFiles.find(f => f.id === id); if (file) get().loadEstimateFromFile(file.data); },
+            saveEstimate: () => {
+                const s = get();
+                const exportData = { version: "2.0", meta: { name: s.projectInfo.projectName || "Untitled", created: Date.now(), lastModified: Date.now() }, data: { projectInfo: s.projectInfo, buildingData: s.buildingData, scale: s.scale, pageScales: s.pageScales, measurements: s.measurements, itemSets: s.itemSets, groupColors: s.groupColors, pdfBase64: s.pdfFile } };
+                const blob = new Blob([JSON.stringify(exportData)], {type: "application/json"});
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a'); link.href = url; link.download = `${s.projectInfo.projectName.replace(/\s+/g, '_')}.takeoff`;
+                document.body.appendChild(link); link.click(); document.body.removeChild(link);
+            },
 
-      // --- Assembly Def CRUD ---
-      addAssemblyDef: (name, category) => set((state) => ({
-        assemblyDefs: [...state.assemblyDefs, {
-          id: uuidv4(),
-          name,
-          category,
-          variables: [],
-          children: []
-        }]
-      })),
+            updateProjectInfo: (updates) => { get().commitHistory(); set(s => ({projectInfo: {...s.projectInfo, ...updates}})); },
+            updateBuildingData: (updates) => { get().commitHistory(); set(s => ({buildingData: {...s.buildingData, ...updates}})); },
+            setScale: (scale) => set({scale}),
+            setPageScale: (pageIndex, scale) => {
+                get().commitHistory();
+                set(s => {
+                    const newPageScales = {...s.pageScales};
+                    if (scale === undefined) delete newPageScales[pageIndex]; else newPageScales[pageIndex] = scale;
+                    return { pageScales: newPageScales };
+                });
+            },
+            toggleScaleLock: () => set(s => ({ isScaleLocked: !s.isScaleLocked })),
+            setPageIndex: (index) => set({activePageIndex: Math.max(0, index)}),
+            setTool: (activeTool) => set({activeTool, activeWizardTool: null, isCalibrating: false}),
 
-      updateAssemblyDef: (id, updates) => set((state) => ({
-        assemblyDefs: state.assemblyDefs.map(d => d.id === id ? { ...d, ...updates } : d)
-      })),
+            // Set Wizard Step (Global UI State)
+            setWizardStep: (step) => set({ activeWizardStep: step }),
 
-      deleteAssemblyDef: (id) => set((state) => ({
-        assemblyDefs: state.assemblyDefs.filter(d => d.id !== id)
-      })),
+            setWizardTool: (tag) => set({
+                activeWizardTool: tag,
+                activeTool: tag ? 'line' : 'select'
+            }),
 
-      cloneAssemblyDef: (id) => set((state) => {
-        const original = state.assemblyDefs.find(a => a.id === id);
-        if (!original) return state;
-        
-        const newVars = original.variables.map(v => ({ ...v, id: uuidv4() }));
-        const newChildren = original.children.map(c => ({ ...c, id: uuidv4() }));
+            setActiveMeasurement: (activeMeasurementId) => set({activeMeasurementId}),
+            setIsCalibrating: (isCalibrating) => set({isCalibrating, activeTool: 'select'}),
+            setViewport: (zoom, pan) => set({zoom, pan}),
 
-        return {
-          assemblyDefs: [...state.assemblyDefs, {
-            ...original,
-            id: uuidv4(),
-            name: `${original.name} (Copy)`,
-            variables: newVars,
-            children: newChildren
-          }]
-        };
-      }),
+            addMeasurement: (type, points, name, tags = [], extraProps = {}) => {
+                get().commitHistory();
+                const {activePageIndex, measurements, activeWizardTool, scale} = get();
+                const existingNames = measurements.map(m => m.name);
+                const uniqueName = generateUniqueName(name, existingNames);
+                const finalTags = activeWizardTool ? [...tags, activeWizardTool] : tags;
 
-      addVariableToDef: (defId, name, type) => set((state) => ({
-        assemblyDefs: state.assemblyDefs.map(def => {
-          if (def.id !== defId) return def;
-          return {
-            ...def,
-            variables: [...def.variables, { id: uuidv4(), name, type }]
-          };
-        })
-      })),
+                let group = extraProps.group;
+                let roofType = extraProps.roofLineType;
 
-      deleteVariableFromDef: (defId, varId) => set((state) => ({
-        assemblyDefs: state.assemblyDefs.map(def => {
-          if (def.id !== defId) return def;
-          return {
-            ...def,
-            variables: def.variables.filter(v => v.id !== varId)
-          };
-        })
-      })),
+                if (!group && activeWizardTool) {
+                    if (activeWizardTool.startsWith('roof-')) group = 'Roof';
+                    else if (activeWizardTool.includes('foundation')) group = 'Foundation';
+                    else if (activeWizardTool.includes('garage')) group = 'Garage';
+                }
 
-      addNodeToDef: (defId, node) => set((state) => ({
-        assemblyDefs: state.assemblyDefs.map(def => {
-          if (def.id !== defId) return def;
-          return {
-            ...def,
-            children: [...def.children, { ...node, id: uuidv4() }]
-          };
-        })
-      })),
+                if (!roofType && activeWizardTool?.startsWith('roof-')) {
+                    if (activeWizardTool === 'roof-hip') roofType = 'hip';
+                    else if (activeWizardTool === 'roof-valley') roofType = 'valley';
+                    else if (activeWizardTool === 'roof-ridge') roofType = 'ridge';
+                    else if (activeWizardTool === 'roof-eave') roofType = 'eave';
+                    else if (activeWizardTool === 'roof-gable') roofType = 'gable';
+                }
 
-      updateNodeInDef: (defId, nodeId, updates) => set((state) => ({
-        assemblyDefs: state.assemblyDefs.map(def => {
-          if (def.id !== defId) return def;
-          return {
-            ...def,
-            children: def.children.map(c => c.id === nodeId ? { ...c, ...updates } : c)
-          };
-        })
-      })),
+                const newMeasurement: Measurement = {
+                    id: uuidv4(),
+                    name: uniqueName,
+                    type,
+                    points,
+                    pageIndex: activePageIndex,
+                    tags: finalTags,
+                    group,
+                    roofLineType: roofType as any,
+                    pitch: extraProps.pitch || get().buildingData.roofPitch,
+                    ...extraProps
+                };
 
-      removeNodeFromDef: (defId, nodeId) => set((state) => ({
-        assemblyDefs: state.assemblyDefs.map(def => {
-          if (def.id !== defId) return def;
-          return {
-            ...def,
-            children: def.children.filter(c => c.id !== nodeId)
-          };
-        })
-      })),
+                const updates: any = { measurements: [...measurements, newMeasurement] };
 
-      // --- Item Sets--
-      addItemSet: (name) => set(state => ({
-        itemSets: [...state.itemSets, { id: uuidv4(), name, assemblies: [] }]
-      })),
+                const rawLength = getPathLength(points) / scale;
 
-      deleteItemSet: (id) => set(state => ({
-        itemSets: state.itemSets.filter(s => s.id !== id)
-      })),
+                if (activeWizardTool === 'foundation') {
+                    updates.buildingData = {
+                        ...get().buildingData,
+                        foundationAreaId: newMeasurement.id,
+                        foundationPerimeterId: newMeasurement.id,
+                        foundationCorners: points.length
+                    };
+                } else if (activeWizardTool && activeWizardTool.startsWith('roof-')) {
+                    const bd = get().buildingData;
+                    const pitch = newMeasurement.pitch || bd.roofPitch;
+                    const newBD = { ...bd };
 
-      addInstanceToSet: (setId, defId) => set(state => {
-        const def = state.assemblyDefs.find(d => d.id === defId);
-        if (!def) return state;
-        
-        const initialVars: Record<string, VariableSource> = {};
-        def.variables.forEach(v => {
-          initialVars[v.id] = { type: 'manual', value: 0 };
-        });
+                    if (roofType === 'ridge') {
+                        newBD.roofRidgeLength = (newBD.roofRidgeLength || 0) + rawLength;
+                    } else if (roofType === 'eave') {
+                        newBD.roofEaveLength = (newBD.roofEaveLength || 0) + rawLength;
+                    } else if (roofType === 'gable') {
+                        const multiplier = getSlopeMultiplier(pitch);
+                        newBD.roofGableLength = (newBD.roofGableLength || 0) + (rawLength * multiplier);
+                    } else if (roofType === 'hip') {
+                        const multiplier = getPlanHipToTrueHipMultiplier(pitch);
+                        newBD.roofHipLength = (newBD.roofHipLength || 0) + (rawLength * multiplier);
+                    } else if (roofType === 'valley') {
+                        const multiplier = getPlanHipToTrueHipMultiplier(pitch);
+                        newBD.valleyLength  = (newBD.valleyLength || 0) + (rawLength * multiplier);
+                    }
+                    updates.buildingData = newBD;
+                }
 
-        const newInstance: ProjectAssembly = {
-          id: uuidv4(),
-          assemblyDefId: defId,
-          name: def.name,
-          variableValues: initialVars
-        };
+                set(updates);
+            },
 
-        return {
-          itemSets: state.itemSets.map(set => {
-            if (set.id !== setId) return set;
-            return { ...set, assemblies: [...set.assemblies, newInstance] };
-          })
-        };
-      }),
+            updateMeasurementTransient: (id, updates) => {
+                set((s) => ({
+                    measurements: s.measurements.map(m => m.id === id ? {...m, ...updates} : m)
+                }));
+            },
 
-      deleteInstanceFromSet: (setId, instanceId) => set(state => ({
-        itemSets: state.itemSets.map(set => {
-          if (set.id !== setId) return set;
-          return { ...set, assemblies: set.assemblies.filter(a => a.id !== instanceId) };
-        })
-      })),
+            updateMeasurement: (id, updates) => {
+                get().commitHistory();
+                set((s) => {
+                    const processedUpdates = {...updates};
+                    if (processedUpdates.name !== undefined) {
+                        const existingNames = s.measurements.filter(m => m.id !== id).map(m => m.name);
+                        processedUpdates.name = generateUniqueName(processedUpdates.name, existingNames);
+                    }
+                    if (processedUpdates.group !== undefined) {
+                        if (processedUpdates.group === '') processedUpdates.group = undefined;
+                        else processedUpdates.group = processedUpdates.group.trim();
+                    }
+                    return {measurements: s.measurements.map(m => m.id === id ? {...m, ...processedUpdates} : m)};
+                });
+            },
 
-      updateInstanceVariable: (setId, instanceId, varId, source) => set(state => ({
-        itemSets: state.itemSets.map(set => {
-          if (set.id !== setId) return set;
-          return {
-            ...set,
-            assemblies: set.assemblies.map(inst => {
-              if (inst.id !== instanceId) return inst;
-              return {
-                ...inst,
-                variableValues: { ...inst.variableValues, [varId]: source }
-              };
+            deleteMeasurement: (id) => {
+                get().commitHistory();
+                set((s) => ({
+                    measurements: s.measurements.filter(m => m.id !== id),
+                    activeMeasurementId: s.activeMeasurementId === id ? null : s.activeMeasurementId
+                }));
+            },
+            setMeasurements: (measurements) => { get().commitHistory(); set({ measurements }); },
+            setGroupColor: (group, color) => { get().commitHistory(); set(s => ({ groupColors: { ...s.groupColors, [group]: color } })); },
+            setGroupVisibility: (group, hidden) => {
+                get().commitHistory();
+                set(s => ({
+                    measurements: s.measurements.map(m => (m.group || 'Ungrouped') === (group || 'Ungrouped') ? {...m, hidden} : m)
+                }));
+            },
+            deletePoint: (mId, idx) => {
+                get().commitHistory();
+                set((s) => ({
+                    measurements: s.measurements.map(m => {
+                        if (m.id !== mId || m.points.length <= 2) return m;
+                        return {...m, points: m.points.filter((_, i) => i !== idx)};
+                    })
+                }));
+            },
+            insertPointAfter: (mId, idx, clickPoint?: Point) => {
+                get().commitHistory();
+                set((s) => ({
+                    measurements: s.measurements.map(m => {
+                        if (m.id !== mId) return m;
+                        const newPoint = clickPoint || (() => {
+                            const p1 = m.points[idx];
+                            const nextIdx = (idx + 1) % m.points.length;
+                            if (m.type === 'line' && idx === m.points.length - 1) return null;
+                            const p2 = m.points[nextIdx];
+                            return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+                        })();
+                        if (!newPoint) return m;
+                        const newPoints = [...m.points];
+                        newPoints.splice(idx + 1, 0, newPoint);
+                        return { ...m, points: newPoints };
+                    })
+                }));
+            },
+
+            addMaterial: (mat) => { get().commitHistory(); set((s) => ({materials: [...s.materials, {...mat, id: mat.sku || uuidv4()}]})); },
+            importMaterials: (incoming) => { get().commitHistory(); set((s) => { const materialsMap = new Map<string, MaterialDef>(); s.materials.forEach(m => { materialsMap.set(m.sku, { ...m, id: m.sku }); }); incoming.forEach(incomingMat => { const processedMat: MaterialDef = { ...incomingMat, id: incomingMat.sku }; materialsMap.set(processedMat.sku, processedMat); }); return { materials: Array.from(materialsMap.values()) }; }); },
+            updateMaterial: (id, updates) => { get().commitHistory(); set((s) => ({materials: s.materials.map(m => m.id === id ? {...m, ...updates} : m)})); },
+            deleteMaterial: (id) => { get().commitHistory(); set((s) => ({materials: s.materials.filter(m => m.id !== id)})); },
+            cloneMaterial: (id) => { get().commitHistory(); set((s) => { const orig = s.materials.find(m => m.id === id); return orig ? {materials: [...s.materials, {...orig, id: uuidv4(), name: `${orig.name} (Copy)`}]} : s; }); },
+
+            addAssemblyDef: (name, category) => { get().commitHistory(); set((s) => { const newId = uuidv4(); return { assemblyDefs: [...s.assemblyDefs, { id: newId, name, category, variables: [], children: [] }] }; }); },
+            updateAssemblyDef: (id, updates) => { get().commitHistory(); set((s) => ({assemblyDefs: s.assemblyDefs.map(d => d.id === id ? {...d, ...updates} : d)})); },
+            deleteAssemblyDef: (id) => { get().commitHistory(); set((s) => ({assemblyDefs: s.assemblyDefs.filter(d => d.id !== id)})); },
+            cloneAssemblyDef: (id) => { get().commitHistory(); set((s) => { const orig = s.assemblyDefs.find(a => a.id === id); return orig ? { assemblyDefs: [...s.assemblyDefs, { ...orig, id: uuidv4(), name: `${orig.name} (Copy)`, variables: orig.variables.map(v => ({...v, id: uuidv4()})), children: orig.children.map(c => ({...c, id: uuidv4()})) }] } : s; }); },
+            importAssemblyDefs: (incoming) => { get().commitHistory(); set((s) => { const assemblyDefsMap = new Map<string, AssemblyDef>(); s.assemblyDefs.forEach(def => { assemblyDefsMap.set(def.id, def); }); incoming.forEach(incomingDef => { const defId = incomingDef.id || uuidv4(); assemblyDefsMap.set(defId, { ...incomingDef, id: defId, variables: (incomingDef.variables || []).map(v => ({ ...v, id: v.id || uuidv4() })), children: (incomingDef.children || []).map(c => { let resolvedChildId = c.childId; if (c.childType === 'material') { const childSku = (c as any).childSku || c.childId; const material = s.materials.find(m => m.sku === childSku); if (material) resolvedChildId = material.id; } return { ...c, id: c.id || uuidv4(), childId: resolvedChildId, formula: c.formula || '0', round: c.round || 'up', variableMapping: c.variableMapping, isDynamic: c.isDynamic, variantIds: c.variantIds || [], defaultVariantId: c.defaultVariantId }; }) }); }); return { assemblyDefs: Array.from(assemblyDefsMap.values()) }; }); },
+
+            addVariableToDef: (defId, name, type) => { get().commitHistory(); set((s) => ({ assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : { ...d, variables: [...d.variables, {id: uuidv4(), name, type}] }) })); },
+            deleteVariableFromDef: (defId, varId) => { get().commitHistory(); set((s) => ({ assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : { ...d, variables: d.variables.filter(v => v.id !== varId) }) })); },
+            addNodeToDef: (defId, node) => { get().commitHistory(); set((s) => ({ assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : { ...d, children: [...d.children, {...node, id: uuidv4()}] }) })); },
+            updateNodeInDef: (defId, nodeId, updates) => { get().commitHistory(); set((s) => ({ assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : { ...d, children: d.children.map(c => c.id === nodeId ? {...c, ...updates} : c) }) })); },
+            removeNodeFromDef: (defId, nodeId) => { get().commitHistory(); set((s) => ({ assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : { ...d, children: d.children.filter(c => c.id !== nodeId) }) })); },
+            reorderNodeInDef: (defId, nodeId, direction) => { get().commitHistory(); set(s => { const def = s.assemblyDefs.find(d => d.id === defId); if (!def) return s; const index = def.children.findIndex(c => c.id === nodeId); if (index === -1) return s; const newChildren = [...def.children]; const targetIndex = direction === 'up' ? index - 1 : index + 1; if (targetIndex >= 0 && targetIndex < newChildren.length) { const [removed] = newChildren.splice(index, 1); newChildren.splice(targetIndex, 0, removed); return { assemblyDefs: s.assemblyDefs.map(d => d.id !== defId ? d : { ...d, children: newChildren }) }; } return s; }); },
+
+            addItemSet: (name) => { get().commitHistory(); set(s => ({itemSets: [...s.itemSets, {id: uuidv4(), name, assemblies: [], manualItems: [], itemOrder: []}]})); },
+            renameItemSet: (id, newName) => { get().commitHistory(); set(s => ({itemSets: s.itemSets.map(i => i.id === id ? {...i, name: newName} : i)})); },
+            setItemSets: (sets) => { get().commitHistory(); set({ itemSets: sets }); },
+            updateItemSet: (id, updates) => { get().commitHistory(); set(s => ({itemSets: s.itemSets.map(i => i.id === id ? {...i, ...updates} : i)})); },
+            deleteItemSet: (id) => { get().commitHistory(); set(s => ({itemSets: s.itemSets.filter(i => i.id !== id)})); },
+            reorderItemsInSet: (setId, newOrder) => {
+                get().commitHistory();
+                set(s => ({
+                    itemSets: s.itemSets.map(set => set.id === setId ? { ...set, itemOrder: newOrder } : set)
+                }));
+            },
+
+            saveItemSetAsFavorite: (id, name) => { set(s => { const original = s.itemSets.find(i => i.id === id); if (!original) return s; const favorite: ItemSet = { ...original, id: uuidv4(), name: name || original.name, assemblies: original.assemblies.map(a => ({...a, id: uuidv4()})), manualItems: (original.manualItems || []).map(m => ({...m, id: uuidv4()})), itemOrder: [] }; return { favoriteItemSets: [...s.favoriteItemSets, favorite] }; }); },
+            addItemSetFromFavorite: (favId) => { get().commitHistory(); set(s => { const template = s.favoriteItemSets.find(f => f.id === favId); if (!template) return s; const newSet: ItemSet = { ...template, id: uuidv4(), name: template.name, assemblies: template.assemblies.map(a => ({...a, id: uuidv4()})), manualItems: (template.manualItems || []).map(m => ({...m, id: uuidv4()})), itemOrder: [] };
+                if (!newSet.itemOrder || newSet.itemOrder.length === 0) {
+                    newSet.itemOrder = [...newSet.assemblies.map(a => a.id), ...newSet.manualItems.map(m => m.id)];
+                }
+                return { itemSets: [...s.itemSets, newSet] };
+            }); },
+            deleteFavoriteItemSet: (favId) => { set(s => ({favoriteItemSets: s.favoriteItemSets.filter(f => f.id !== favId)})); },
+
+            addInstanceToSet: (setId, defId) => { get().commitHistory(); set(s => { const def = s.assemblyDefs.find(d => d.id === defId); if (!def) return s; const initialVars: Record<string, VariableSource> = {}; def.variables.forEach(v => { let defaultValue: number | string = 0; if (v.type === 'pitch') defaultValue = ''; else if (v.type === 'boolean') defaultValue = 0; else if (v.type === 'count') { defaultValue = 1;} initialVars[v.id] = {type: 'manual', value: defaultValue}; }); const newInstance: ProjectAssembly = { id: uuidv4(), assemblyDefId: defId, name: def.name, variableValues: initialVars, selections: {} };
+                return { itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, assemblies: [...set.assemblies, newInstance], itemOrder: [...(set.itemOrder || []), newInstance.id] }) };
+            }); },
+            deleteInstanceFromSet: (setId, instId) => { get().commitHistory(); set(s => ({ itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, assemblies: set.assemblies.filter(a => a.id !== instId), itemOrder: (set.itemOrder || []).filter(id => id !== instId) }) })); },
+            updateInstanceVariable: (setId, instId, varId, src) => { get().commitHistory(); set(s => ({ itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, assemblies: set.assemblies.map(inst => inst.id !== instId ? inst : { ...inst, variableValues: {...inst.variableValues, [varId]: src} }) }) })); },
+            updateInstanceSelection: (setId, instId, nodeId, selId) => { get().commitHistory(); set(s => ({ itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, assemblies: set.assemblies.map(inst => inst.id !== instId ? inst : { ...inst, selections: { ...(inst.selections || {}), [nodeId]: selId } }) }) })); },
+
+            addManualItemToSet: (setId, item) => {
+                get().commitHistory();
+                set(s => {
+                    const newItem = { ...item, id: uuidv4() };
+                    return { itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, manualItems: [...(set.manualItems || []), newItem], itemOrder: [...(set.itemOrder || []), newItem.id] }) };
+                });
+            },
+            updateManualItem: (setId, itemId, updates) => {
+                get().commitHistory();
+                set(s => ({
+                    itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, manualItems: (set.manualItems || []).map(m => m.id === itemId ? { ...m, ...updates } : m) })
+                }));
+            },
+            deleteManualItem: (setId, itemId) => {
+                get().commitHistory();
+                set(s => ({
+                    itemSets: s.itemSets.map(set => set.id !== setId ? set : { ...set, manualItems: (set.manualItems || []).filter(m => m.id !== itemId), itemOrder: (set.itemOrder || []).filter(id => id !== itemId) })
+                }));
+            }
+        }),
+        {
+            name: 'takeoff-pro-db',
+            partialize: (state) => ({
+                materials: state.materials,
+                assemblyDefs: state.assemblyDefs,
+                recentFiles: state.recentFiles,
+                favoriteItemSets: state.favoriteItemSets
             })
-          };
-        })
-      }))
-    }),
-    {
-      name: 'takeoff-storage',
-      partialize: (state) => ({
-        measurements: state.measurements,
-        materials: state.materials,
-        assemblyDefs: state.assemblyDefs,
-        itemSets: state.itemSets,
-        scale: state.scale
-      }),
-    }
-  )
+        }
+    )
 );

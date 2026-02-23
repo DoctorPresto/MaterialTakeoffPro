@@ -1,102 +1,58 @@
-import React, { useState } from 'react';
+import {useState} from 'react';
+import Dashboard from './components/Dashboard';
+import DataTab from './components/DataTab';
 import Canvas from './components/Canvas';
-import TakeoffSidebar from './components/TakeoffSidebar';
+import MaterialsTab from './components/MaterialsTab';
 import AssemblyBuilder from './components/AssemblyBuilder';
-import { Upload } from 'lucide-react';
-import { useStore } from './store';
-import { generateGlobalBOM } from './engine';
+import {LogOut, Save} from 'lucide-react';
+import {useStore} from './store';
 
 const App = () => {
-  const [file, setFile] = useState<File | null>(null);
-  const [activeTab, setActiveTab] = useState<'takeoff' | 'setup' | 'bom'>('takeoff');
-  
-  const { itemSets, assemblyDefs, measurements, materials, scale } = useStore();
+    const [activeTab, setActiveTab] = useState<'data' | 'measure' | 'materials' | 'setup'>('data');
+    const {estimateName, closeEstimate, saveEstimate} = useStore();
 
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) setFile(e.target.files[0]);
-  };
+    if (!estimateName) return <Dashboard/>;
 
-  const bom = generateGlobalBOM(itemSets, assemblyDefs, measurements, materials, scale);
-
-  return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden font-sans text-gray-800 bg-gray-100">
-      {/* Top Bar */}
-      <div className="h-12 border-b bg-white flex items-center px-4 justify-between shrink-0 shadow-sm z-30">
-        <div className="font-bold text-blue-600">MaterialTakeoff<span className="text-gray-400">Pro</span></div>
-        
-        <div className="flex gap-1 bg-gray-100 p-1 rounded">
-          <button className={`px-4 py-1 text-sm font-medium rounded ${activeTab === 'takeoff' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`} onClick={() => setActiveTab('takeoff')}>Takeoff</button>
-          <button className={`px-4 py-1 text-sm font-medium rounded ${activeTab === 'bom' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`} onClick={() => setActiveTab('bom')}>Material Estimate</button>
-          <button className={`px-4 py-1 text-sm font-medium rounded ${activeTab === 'setup' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`} onClick={() => setActiveTab('setup')}>Assembly Builder</button>
+    return (
+        <div className="h-screen w-screen flex flex-col overflow-hidden font-sans text-gray-800 bg-gray-100 max-w-full">
+            <div className="h-14 bg-gray-900 text-white flex items-center px-4 justify-between shrink-0 shadow-md z-50">
+                <div className="flex items-center gap-6">
+                    <div className="font-bold text-xl tracking-tight">Takeoff<span className="text-blue-400">PRO</span>
+                    </div>
+                    <div className="flex bg-gray-800 rounded p-1">
+                        <button onClick={() => setActiveTab('data')}
+                                className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'data' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>Project Info
+                        </button>
+                        <button onClick={() => setActiveTab('measure')}
+                                className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'measure' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>Measurements
+                        </button>
+                        <button onClick={() => setActiveTab('materials')}
+                                className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'materials' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>Material List
+                        </button>
+                        <button onClick={() => setActiveTab('setup')}
+                                className={`px-4 py-1 text-sm font-medium rounded transition-colors ${activeTab === 'setup' ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-white'}`}>DB Setup
+                        </button>
+                    </div>
+                </div>
+                <div className="flex gap-2">
+                    <button onClick={saveEstimate}
+                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-sm font-medium border border-blue-500">
+                        <Save size={16}/> Save
+                    </button>
+                    <button onClick={closeEstimate}
+                            className="flex items-center gap-2 text-gray-400 px-3 py-1.5 rounded text-sm hover:bg-gray-800 hover:text-white">
+                        <LogOut size={16}/> Exit
+                    </button>
+                </div>
+            </div>
+            <div className="flex-1 flex overflow-hidden relative w-full">
+                {activeTab === 'data' && <DataTab/>}
+                {activeTab === 'measure' && <Canvas/>}
+                {activeTab === 'materials' && <MaterialsTab/>}
+                {activeTab === 'setup' && <AssemblyBuilder/>}
+            </div>
         </div>
-
-        <label className="flex items-center gap-2 cursor-pointer bg-blue-50 text-blue-600 px-3 py-1.5 rounded text-sm hover:bg-blue-100 border border-blue-100">
-          <Upload size={16} /> <span>Upload PDF</span>
-          <input type="file" accept="application/pdf" className="hidden" onChange={onFileChange} />
-        </label>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {activeTab === 'takeoff' && (
-          <>
-            <Canvas file={file} />
-            <TakeoffSidebar />
-          </>
-        )}
-        
-        {activeTab === 'setup' && (
-          <div className="w-full h-full">
-            <AssemblyBuilder />
-          </div>
-        )}
-
-        {activeTab === 'bom' && (
-          <div className="w-full h-full p-8 overflow-auto">
-             <div className="max-w-4xl mx-auto bg-white shadow rounded-lg p-6">
-                <h2 className="text-2xl font-bold mb-6">Material List</h2>
-                
-                {itemSets.map(set => {
-                   // Filter BOM for just this set
-                   const setLines = bom.filter(l => l.sourceItemSet === set.name);
-                   if (setLines.length === 0) return null;
-
-                   return (
-                     <div key={set.id} className="mb-8">
-                        <h3 className="font-bold text-lg border-b pb-2 mb-2 bg-gray-50 p-2">{set.name}</h3>
-                        <table className="w-full text-sm">
-                           <thead>
-                              <tr className="text-left text-gray-500">
-                                 {/* UPDATED COLUMN ORDER */}
-                                 <th className="pb-2 w-32">SKU</th>
-                                 <th className="pb-2">Material Name</th>
-                                 <th className="pb-2 w-20 text-center">UOM</th>
-                                 <th className="pb-2 text-right">Qty</th>
-                              </tr>
-                           </thead>
-                           <tbody className="divide-y">
-                              {setLines.map((line, idx) => (
-                                 <tr key={idx}>
-                                    {/* UPDATED CELL ORDER */}
-                                    <td className="py-2 text-gray-500">{line.sku}</td>
-                                    <td className="py-2 font-medium">{line.name}</td>
-                                    <td className="py-2 text-center text-gray-500">{line.uom}</td>
-                                    <td className="py-2 text-right font-mono font-bold">{line.quantity}</td>
-                                 </tr>
-                              ))}
-                           </tbody>
-                        </table>
-                     </div>
-                   );
-                })}
-
-                {bom.length === 0 && <div className="text-center text-gray-400 py-10">No materials generated yet.</div>}
-             </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+    );
 };
 
 export default App;

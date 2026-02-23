@@ -1,0 +1,305 @@
+[
+  {
+    "name": "2 x 6 Exterior Wall",
+    "category": "Wall Types",
+    "variables": [
+      {
+        "name": "Len",
+        "type": "linear"
+      },
+      {
+        "name": "Height",
+        "type": "linear"
+      },
+      {
+        "name": "Openings",
+        "type": "area"
+      },
+      {
+        "name": "TreatedPlates",
+        "type": "boolean"
+      }
+    ],
+    "children": [
+      {
+        "childType": "material",
+        "childId": "2ceeb53b-9a4c-4196-8dec-0e84c108d59e",
+        "formula": "if TreatedPlates((Len * .5)/16)",
+        "round": "up",
+        "childSku": "TT2616"
+      },
+      {
+        "childType": "material",
+        "childId": "3c4dfff1-b596-4233-ad35-ebe3fa2cf28f",
+        "formula": "if TreatedPlates((Len * .2)/14)",
+        "round": "up",
+        "childSku": "TT2614"
+      },
+      {
+        "childType": "material",
+        "childId": "ef870754-5541-448d-a0ac-e503fc80f130",
+        "formula": "if TreatedPlates((Len * .3)/12)",
+        "round": "up",
+        "childSku": "TT2612"
+      },
+      {
+        "childType": "material",
+        "childId": "cf22c35a-29ca-47a3-a2ff-cd5ad3065099",
+        "formula": "if TreatedPlates == 0 ((Len * .5)/16)",
+        "round": "up",
+        "childSku": "S2616"
+      },
+      {
+        "childType": "material",
+        "childId": "20c28497-cf3d-488a-a0ce-ad1e9c8fc806",
+        "formula": "if TreatedPlates == 0 ((Len * .2)/14)",
+        "round": "up",
+        "childSku": "S2614"
+      },
+      {
+        "childType": "material",
+        "childId": "b4b895b1-d6be-477c-94c9-1ce72e950871",
+        "formula": "if TreatedPlates == 0 ((Len * .3)/12)",
+        "round": "up",
+        "childSku": "S2612"
+      },
+      {
+        "childType": "material",
+        "childId": "2b4b658c-3ae9-44d3-aee2-349e493a2c41",
+        "formula": "(Len/80)",
+        "round": "up",
+        "childSku": "SIGA512"
+      },
+      {
+        "childType": "material",
+        "childId": "88d9eead-70bd-49b4-bbf0-9d92fed5c4d7",
+        "formula": "if Height <= 8 (Len * 1.15",
+        "round": "up",
+        "childSku": "S269258"
+      },
+      {
+        "childType": "material",
+        "childId": "986e2fb9-723e-4974-bf5c-1a27eee3aff3",
+        "formula": "if Height > 8 and Height <= 9 (Len * 1.15)",
+        "round": "up",
+        "childSku": "S2610458"
+      },
+      {
+        "childType": "material",
+        "childId": "a2119094-0c43-4ae7-8010-2f350fa28da1",
+        "formula": "if Height > 9 and Height <= 10 (Len * 1.15)",
+        "round": "up",
+        "childSku": "S2610"
+      },
+      {
+        "childType": "material",
+        "childId": "b4b895b1-d6be-477c-94c9-1ce72e950871",
+        "formula": "if Height > 10 (Len * 1.15)",
+        "round": "up",
+        "childSku": "S2612"
+      },
+      {
+        "childType": "material",
+        "childId": "b4b895b1-d6be-477c-94c9-1ce72e950871",
+        "formula": "(Len *.6)/12",
+        "round": "up",
+        "childSku": "S2612"
+      },
+      {
+        "childType": "material",
+        "childId": "20c28497-cf3d-488a-a0ce-ad1e9c8fc806",
+        "formula": "(Len *.4)/14",
+        "round": "up",
+        "childSku": "S2614"
+      },
+      {
+        "childType": "material",
+        "childId": "c4f9247f-8822-4887-9b59-35ecaf75dc4b",
+        "formula": "(((Len * Height)-(.75*Openings))/32)nearest",
+        "round": "up",
+        "childSku": "OSB716"
+      },
+      {
+        "childType": "material",
+        "childId": "e8ab19b5-7526-4e3f-a873-2a7aa47e0f64",
+        "formula": "(((Len * Height)-(.75*Openings))/32)nearest",
+        "round": "up",
+        "childSku": "ISOCL48114"
+      },
+      {
+        "childType": "material",
+        "childId": "66cd62b9-c05e-4b32-adf6-230ab7a94f7b",
+        "formula": "((Len * Height)-(Openings+(((Len * 1.15)*0.125)*Height)))/78.3",
+        "round": "up",
+        "childSku": "R2015-NEW"
+      },
+      {
+        "childType": "material",
+        "childId": "66cd62b9-c05e-4b32-adf6-230ab7a94f7b",
+        "formula": "((((Len * Height)-(.75*Openings))/32)/7)",
+        "round": "up",
+        "childSku": "R2015-NEW"
+      },
+      {
+        "childType": "material",
+        "childId": "658ae042-a130-47f4-b5e0-3cc32c5889df",
+        "formula": "if Height <= 8((Len * Height)/1500",
+        "round": "up",
+        "childSku": "6861500"
+      },
+      {
+        "childType": "material",
+        "childId": "7c898b98-db01-41a0-945d-50b07b63efd8",
+        "formula": "if Height > 8 and Height <= 9((Len * Height)/1500",
+        "round": "up",
+        "childSku": "6961500"
+      },
+      {
+        "childType": "material",
+        "childId": "05aad59e-fd13-49c7-aa75-070c7e68c950",
+        "formula": "if Height > 9 and Height <= 10((Len * Height)/1500",
+        "round": "up",
+        "childSku": "6101500"
+      },
+      {
+        "childType": "material",
+        "childId": "cdb807c9-48f0-4c8c-8639-d2a965dcbd99",
+        "formula": "if Height > 10 and Height <= 12((Len * Height)/1200",
+        "round": "up",
+        "childSku": "6121200"
+      },
+      {
+        "childType": "material",
+        "childId": "20b42394-bfed-4eae-a42d-446c0203e653",
+        "formula": "if Height > 12 and Height <= 16((Len * Height)/1600",
+        "round": "up",
+        "childSku": "6161600"
+      }
+    ]
+  },
+  {
+    "name": "2x4 Interior Wall",
+    "category": "Wall Types",
+    "variables": [
+      {
+        "name": "Len",
+        "type": "linear"
+      },
+      {
+        "name": "Height",
+        "type": "linear"
+      }
+    ],
+    "children": [
+      {
+        "childType": "material",
+        "childId": "4c1a444b-f325-424b-b424-5dbfc026490d",
+        "formula": "if Height <= 8 (Len * 1.1)",
+        "round": "up",
+        "childSku": "S249258"
+      },
+      {
+        "childType": "material",
+        "childId": "8dbf9230-4e34-4c88-b280-6e370512b6e1",
+        "formula": "if Height > 8 and Height <= 9 (Len * 1.1)",
+        "round": "up",
+        "childSku": "S2410458"
+      }
+    ]
+  },
+  {
+    "name": "Math/Measure Checker",
+    "category": "Use To Check Measurements Till I Do This properly - 1 gy128 = 1\"",
+    "variables": [
+      {
+        "name": "L",
+        "type": "linear"
+      }
+    ],
+    "children": [
+      {
+        "childType": "material",
+        "childId": "05fd030d-e1b4-4eb0-8342-80e6b210fa38",
+        "formula": "(L*12)",
+        "round": "up",
+        "childSku": "GY128"
+      }
+    ]
+  },
+  {
+    "name": "Steel Roofing (Americana/Tough Rib)",
+    "category": "Steel Roofing",
+    "variables": [
+      {
+        "name": "WIDTH",
+        "type": "linear"
+      },
+      {
+        "name": "LENGTH",
+        "type": "linear"
+      },
+      {
+        "name": "PEAK",
+        "type": "linear"
+      },
+      {
+        "name": "VALLEY",
+        "type": "linear"
+      },
+      {
+        "name": "PITCH",
+        "type": "pitch"
+      },
+      {
+        "name": "Westman",
+        "type": "boolean"
+      }
+    ],
+    "children": [
+      {
+        "childType": "material",
+        "childId": "09c728bf-2fdb-4d4a-91ff-b370cf15b791",
+        "formula": "if Westman == 0((WIDTH/3) * LENGTH) ",
+        "round": "up",
+        "childSku": "PG4129"
+      },
+      {
+        "childType": "material",
+        "childId": "e805752c-b2c9-47a1-9a7f-adc5b5050196",
+        "formula": "if Westman((WIDTH/3) up * LENGTH)",
+        "round": "up",
+        "childSku": "WMPTR"
+      },
+      {
+        "childType": "material",
+        "childId": "05fcc6ba-f9be-4e76-a592-2781e57ab1ad",
+        "formula": "if VALLEY > 0 (VALLEY/10)",
+        "round": "up",
+        "childSku": "BLVA24"
+      }
+    ]
+  },
+  {
+    "name": "VINYL SIDING",
+    "category": "Cladding",
+    "variables": [
+      {
+        "name": "Openings",
+        "type": "area"
+      },
+      {
+        "name": "Area",
+        "type": "area"
+      }
+    ],
+    "children": [
+      {
+        "childType": "material",
+        "childId": "5d75346b-7a15-4fcf-939c-aaa877549718",
+        "formula": "((Area - Openings)/ (198/22))",
+        "round": "up",
+        "childSku": "WHDW4.5"
+      }
+    ]
+  }
+]
