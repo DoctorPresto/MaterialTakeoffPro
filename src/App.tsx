@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
 import Dashboard from './components/Dashboard';
 import DataTab from './components/DataTab';
 import Canvas from './components/Canvas';
@@ -9,7 +9,14 @@ import {useStore} from './store';
 
 const App = () => {
     const [activeTab, setActiveTab] = useState<'data' | 'measure' | 'materials' | 'setup'>('data');
-    const {estimateName, closeEstimate, saveEstimate} = useStore();
+    const {estimateName, closeEstimate, saveEstimate, activeWizardStep} = useStore();
+
+    // Auto-switch to Measurements tab when wizard is active
+    useEffect(() => {
+        if (activeWizardStep && activeWizardStep !== 'none') {
+            setActiveTab('measure');
+        }
+    }, [activeWizardStep]);
 
     if (!estimateName) return <Dashboard/>;
 

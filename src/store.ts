@@ -6,6 +6,7 @@ import {
     MeasurementType, Point, ProjectAssembly, ProjectInfo, RecentFile, VariableSource
 } from './types';
 import { getPathLength, getSlopeMultiplier, getPlanHipToTrueHipMultiplier } from './utils/math';
+import { generatePlanePolygon } from './utils/roofOutline';
 
 const generateUniqueName = (baseName: string, existingNames: string[]): string => {
     if (!existingNames.includes(baseName)) return baseName;
@@ -16,6 +17,24 @@ const generateUniqueName = (baseName: string, existingNames: string[]): string =
         uniqueName = `${baseName} ${counter}`;
     }
     return uniqueName;
+};
+
+const recalculateRoofData = (measurements: Measurement[], scale: number, pageScales: Record<number, number>): Partial<BuildingData> => {
+    let roofRidgeLength = 0, roofHipLength = 0, roofEaveLength = 0, roofGableLength = 0, valleyLength = 0;
+    measurements.forEach(m => {
+        if (!m.roofLineType) return;
+        const effectiveScale = pageScales[m.pageIndex] || scale;
+        const rawLength = getPathLength(m.points) / effectiveScale;
+        const pitch = m.pitch || 4;
+        switch (m.roofLineType) {
+            case 'ridge': roofRidgeLength += rawLength; break;
+            case 'eave': roofEaveLength += rawLength; break;
+            case 'gable': roofGableLength += rawLength * getSlopeMultiplier(pitch); break;
+            case 'hip': roofHipLength += rawLength * getPlanHipToTrueHipMultiplier(pitch); break;
+            case 'valley': valleyLength += rawLength * getPlanHipToTrueHipMultiplier(pitch); break;
+        }
+    });
+    return { roofRidgeLength, roofHipLength, roofEaveLength, roofGableLength, valleyLength };
 };
 
 interface HistoryState {
@@ -30,7 +49,7 @@ interface HistoryState {
 }
 
 // DEFINING WIZARD STEP TYPE
-export type WizardStepType = 'none' | 'profile' | 'foundation' | 'framing' | 'roof';
+export type WizardStepType = 'none' | 'roof';
 
 interface AppState {
     past: HistoryState[];
@@ -62,6 +81,10 @@ interface AppState {
     favoriteItemSets: ItemSet[];
     groupColors: Record<string, string>;
 
+    // Plane builder state (for line-selection-based plane creation)
+    planeBuilderActive: boolean;
+    planeBuilderSelectedIds: string[];
+
     // NEW: Global Wizard Step State
     activeWizardStep: WizardStepType;
     setWizardStep: (step: WizardStepType) => void;
@@ -91,6 +114,11 @@ interface AppState {
     setMeasurements: (measurements: Measurement[]) => void;
     setGroupColor: (group: string, color: string) => void;
     setGroupVisibility: (group: string | undefined, hidden: boolean) => void;
+    addRoofPlaneFromDimensions: (shape: 'rectangle' | 'triangle' | 'trapezoid' | 'custom', dims: { width?: number; height?: number; topBase?: number; bottomBase?: number; customArea?: number }, pitch: number) => void;
+    createPlaneFromLines: (lineIds: string[]) => boolean;
+    togglePlaneBuilderLine: (id: string) => void;
+    clearPlaneBuilder: () => void;
+    setPlaneBuilderActive: (active: boolean) => void;
     deletePoint: (measurementId: string, pointIndex: number) => void;
     insertPointAfter: (measurementId: string, pointIndex: number, clickPoint?: Point) => void;
 
@@ -169,6 +197,9 @@ export const useStore = create<AppState>()(
             itemSets: [],
             favoriteItemSets: [],
             groupColors: {},
+
+            planeBuilderActive: false,
+            planeBuilderSelectedIds: [],
 
             activeWizardStep: 'none',
 
@@ -273,13 +304,21 @@ export const useStore = create<AppState>()(
 
             updateProjectInfo: (updates) => { get().commitHistory(); set(s => ({projectInfo: {...s.projectInfo, ...updates}})); },
             updateBuildingData: (updates) => { get().commitHistory(); set(s => ({buildingData: {...s.buildingData, ...updates}})); },
-            setScale: (scale) => set({scale}),
-            setPageScale: (pageIndex, scale) => {
+            setScale: (scale) => {
+                set({ scale });
+                // Recalculate roof data with new scale
+                const { measurements, pageScales } = get();
+                const roofUpdates = recalculateRoofData(measurements, scale, pageScales);
+                set(s => ({ buildingData: { ...s.buildingData, ...roofUpdates } }));
+            },
+            setPageScale: (pageIndex, scaleVal) => {
                 get().commitHistory();
                 set(s => {
                     const newPageScales = {...s.pageScales};
-                    if (scale === undefined) delete newPageScales[pageIndex]; else newPageScales[pageIndex] = scale;
-                    return { pageScales: newPageScales };
+                    if (scaleVal === undefined) delete newPageScales[pageIndex]; else newPageScales[pageIndex] = scaleVal;
+                    // Recalculate roof data with updated page scales
+                    const roofUpdates = recalculateRoofData(s.measurements, s.scale, newPageScales);
+                    return { pageScales: newPageScales, buildingData: { ...s.buildingData, ...roofUpdates } };
                 });
             },
             toggleScaleLock: () => set(s => ({ isScaleLocked: !s.isScaleLocked })),
@@ -291,7 +330,167 @@ export const useStore = create<AppState>()(
 
             setWizardTool: (tag) => set({
                 activeWizardTool: tag,
-                activeTool: tag ? 'line' : 'select'
+                activeTool: tag ? (tag === 'roof-plane' ? 'shape' : 'line') : 'select'
+            }),
+
+            addRoofPlaneFromDimensions: (shape, dims, pitch) => {
+                get().commitHistory();
+                const { measurements, activePageIndex, zoom, pan, buildingData } = get();
+                const effectiveScale = get().pageScales[activePageIndex] || get().scale;
+
+                // Determine next plane index
+                const existingPlanes = measurements.filter(m => m.roofPlaneIndex);
+                const nextIndex = existingPlanes.length > 0
+                    ? Math.max(...existingPlanes.map(m => m.roofPlaneIndex!)) + 1
+                    : 1;
+
+                // Center of current viewport
+                const cx = (-pan.x + window.innerWidth / 2) / zoom;
+                const cy = (-pan.y + window.innerHeight / 2) / zoom;
+
+                const points = generatePlanePolygon(shape, dims, effectiveScale, cx, cy);
+                const planePitch = pitch || buildingData.roofPitch || 4;
+
+                const newMeasurement: Measurement = {
+                    id: uuidv4(),
+                    name: `Plane ${nextIndex}`,
+                    type: 'shape',
+                    points,
+                    pageIndex: activePageIndex,
+                    tags: ['roof-plane'],
+                    group: 'Roof Planes',
+                    pitch: planePitch,
+                    roofPlaneIndex: nextIndex,
+                    roofPlaneShape: shape,
+                    labels: { showArea: true }
+                };
+
+                set({ measurements: [...measurements, newMeasurement] });
+            },
+
+            createPlaneFromLines: (lineIds) => {
+                const { measurements, buildingData, scale, pageScales, activePageIndex, zoom, pan } = get();
+
+                // Gather selected lines and compute their real-world lengths
+                const selectedLines = lineIds.map(id => measurements.find(m => m.id === id)).filter(Boolean) as Measurement[];
+                if (selectedLines.length < 3) return false;
+
+                // Categorize lines by type and compute lengths in feet
+                let eaveLengthFt = 0;
+                let ridgeLengthFt = 0;
+                let rafterLengthFt = 0;
+                let rafterCount = 0;
+
+                selectedLines.forEach(m => {
+                    const effectiveScale = pageScales[m.pageIndex] || scale;
+                    const lengthFt = getPathLength(m.points) / effectiveScale;
+                    const type = m.roofLineType || 'eave';
+
+                    if (type === 'eave') {
+                        eaveLengthFt += lengthFt;
+                    } else if (type === 'ridge') {
+                        ridgeLengthFt += lengthFt;
+                    } else {
+                        // hip, valley, gable → all contribute to rafter/slope dimension
+                        rafterLengthFt += lengthFt;
+                        rafterCount++;
+                    }
+                });
+
+                // Average rafter length if multiple rafter-type lines selected
+                const avgRafterFt = rafterCount > 0 ? rafterLengthFt / rafterCount : 0;
+
+                // Determine shape type from line types present
+                let shape: 'rectangle' | 'triangle' | 'trapezoid';
+                let planAreaFt: number;
+
+                if (ridgeLengthFt > 0 && eaveLengthFt > 0) {
+                    if (Math.abs(ridgeLengthFt - eaveLengthFt) < 1) {
+                        // Ridge ≈ Eave → rectangle (gable plane)
+                        shape = 'rectangle';
+                        planAreaFt = eaveLengthFt * avgRafterFt;
+                    } else {
+                        // Ridge ≠ Eave → trapezoid (hip side)
+                        shape = 'trapezoid';
+                        planAreaFt = ((ridgeLengthFt + eaveLengthFt) / 2) * avgRafterFt;
+                    }
+                } else if (eaveLengthFt > 0 && ridgeLengthFt === 0) {
+                    // No ridge → triangle (hip end)
+                    shape = 'triangle';
+                    planAreaFt = (eaveLengthFt * avgRafterFt) / 2;
+                } else {
+                    // Fallback: use all selected line lengths for a rough rectangle
+                    shape = 'rectangle';
+                    const totalLength = selectedLines.reduce((sum, m) => {
+                        const effectiveScale = pageScales[m.pageIndex] || scale;
+                        return sum + getPathLength(m.points) / effectiveScale;
+                    }, 0);
+                    planAreaFt = (totalLength / 4) * (totalLength / 4); // Rough square
+                }
+
+                if (planAreaFt <= 0) return false;
+
+                get().commitHistory();
+
+                // Generate polygon at center of current viewport
+                const effectiveScale = pageScales[activePageIndex] || scale;
+                const cx = (-pan.x + window.innerWidth / 2) / zoom;
+                const cy = (-pan.y + window.innerHeight / 2) / zoom;
+
+                const existingPlanes = measurements.filter(m => m.roofPlaneIndex);
+                const nextIndex = existingPlanes.length > 0
+                    ? Math.max(...existingPlanes.map(m => m.roofPlaneIndex!)) + 1
+                    : 1;
+
+                const planePitch = buildingData.roofPitch || 4;
+
+                // Generate appropriately-sized polygon from real dimensions
+                const points = generatePlanePolygon(
+                    shape,
+                    shape === 'rectangle'
+                        ? { width: eaveLengthFt, height: avgRafterFt }
+                        : shape === 'triangle'
+                            ? { width: eaveLengthFt, height: avgRafterFt }
+                            : { topBase: ridgeLengthFt, bottomBase: eaveLengthFt, height: avgRafterFt },
+                    effectiveScale,
+                    cx,
+                    cy
+                );
+
+                const newMeasurement: Measurement = {
+                    id: uuidv4(),
+                    name: `Plane ${nextIndex}`,
+                    type: 'shape',
+                    points,
+                    pageIndex: activePageIndex,
+                    tags: ['roof-plane'],
+                    group: 'Roof Planes',
+                    pitch: planePitch,
+                    roofPlaneIndex: nextIndex,
+                    roofPlaneShape: shape,
+                    labels: { showArea: true },
+                };
+
+                set({ measurements: [...measurements, newMeasurement] });
+                return true;
+            },
+
+            togglePlaneBuilderLine: (id) => {
+                set(s => {
+                    const ids = s.planeBuilderSelectedIds;
+                    const idx = ids.indexOf(id);
+                    if (idx >= 0) {
+                        return { planeBuilderSelectedIds: ids.filter(i => i !== id) };
+                    }
+                    return { planeBuilderSelectedIds: [...ids, id] };
+                });
+            },
+
+            clearPlaneBuilder: () => set({ planeBuilderSelectedIds: [], planeBuilderActive: false }),
+
+            setPlaneBuilderActive: (active) => set({
+                planeBuilderActive: active,
+                planeBuilderSelectedIds: active ? [] : [],
             }),
 
             setActiveMeasurement: (activeMeasurementId) => set({activeMeasurementId}),
@@ -300,21 +499,25 @@ export const useStore = create<AppState>()(
 
             addMeasurement: (type, points, name, tags = [], extraProps = {}) => {
                 get().commitHistory();
-                const {activePageIndex, measurements, activeWizardTool, scale} = get();
+                const {activePageIndex, measurements, activeWizardTool} = get();
                 const existingNames = measurements.map(m => m.name);
                 const uniqueName = generateUniqueName(name, existingNames);
                 const finalTags = activeWizardTool ? [...tags, activeWizardTool] : tags;
 
                 let group = extraProps.group;
                 let roofType = extraProps.roofLineType;
+                let roofPlaneIndex = extraProps.roofPlaneIndex;
+                let roofPlaneShape = extraProps.roofPlaneShape;
+                let labels = extraProps.labels;
 
                 if (!group && activeWizardTool) {
-                    if (activeWizardTool.startsWith('roof-')) group = 'Roof';
+                    if (activeWizardTool === 'roof-plane') group = 'Roof Planes';
+                    else if (activeWizardTool.startsWith('roof-')) group = 'Roof';
                     else if (activeWizardTool.includes('foundation')) group = 'Foundation';
                     else if (activeWizardTool.includes('garage')) group = 'Garage';
                 }
 
-                if (!roofType && activeWizardTool?.startsWith('roof-')) {
+                if (!roofType && activeWizardTool?.startsWith('roof-') && activeWizardTool !== 'roof-plane') {
                     if (activeWizardTool === 'roof-hip') roofType = 'hip';
                     else if (activeWizardTool === 'roof-valley') roofType = 'valley';
                     else if (activeWizardTool === 'roof-ridge') roofType = 'ridge';
@@ -322,22 +525,33 @@ export const useStore = create<AppState>()(
                     else if (activeWizardTool === 'roof-gable') roofType = 'gable';
                 }
 
+                // Mode A: auto-assign roof plane properties
+                if (activeWizardTool === 'roof-plane' && !roofPlaneIndex) {
+                    const existingPlanes = measurements.filter(m => m.roofPlaneIndex);
+                    roofPlaneIndex = existingPlanes.length > 0
+                        ? Math.max(...existingPlanes.map(m => m.roofPlaneIndex!)) + 1
+                        : 1;
+                    labels = { showArea: true, ...(labels || {}) };
+                }
+
                 const newMeasurement: Measurement = {
                     id: uuidv4(),
-                    name: uniqueName,
+                    name: activeWizardTool === 'roof-plane' ? `Plane ${roofPlaneIndex || 1}` : uniqueName,
                     type,
                     points,
                     pageIndex: activePageIndex,
                     tags: finalTags,
                     group,
                     roofLineType: roofType as any,
+                    roofPlaneIndex,
+                    roofPlaneShape,
                     pitch: extraProps.pitch || get().buildingData.roofPitch,
+                    labels,
                     ...extraProps
                 };
 
-                const updates: any = { measurements: [...measurements, newMeasurement] };
-
-                const rawLength = getPathLength(points) / scale;
+                const allMeasurements = [...measurements, newMeasurement];
+                const updates: any = { measurements: allMeasurements };
 
                 if (activeWizardTool === 'foundation') {
                     updates.buildingData = {
@@ -346,26 +560,12 @@ export const useStore = create<AppState>()(
                         foundationPerimeterId: newMeasurement.id,
                         foundationCorners: points.length
                     };
-                } else if (activeWizardTool && activeWizardTool.startsWith('roof-')) {
-                    const bd = get().buildingData;
-                    const pitch = newMeasurement.pitch || bd.roofPitch;
-                    const newBD = { ...bd };
-
-                    if (roofType === 'ridge') {
-                        newBD.roofRidgeLength = (newBD.roofRidgeLength || 0) + rawLength;
-                    } else if (roofType === 'eave') {
-                        newBD.roofEaveLength = (newBD.roofEaveLength || 0) + rawLength;
-                    } else if (roofType === 'gable') {
-                        const multiplier = getSlopeMultiplier(pitch);
-                        newBD.roofGableLength = (newBD.roofGableLength || 0) + (rawLength * multiplier);
-                    } else if (roofType === 'hip') {
-                        const multiplier = getPlanHipToTrueHipMultiplier(pitch);
-                        newBD.roofHipLength = (newBD.roofHipLength || 0) + (rawLength * multiplier);
-                    } else if (roofType === 'valley') {
-                        const multiplier = getPlanHipToTrueHipMultiplier(pitch);
-                        newBD.valleyLength  = (newBD.valleyLength || 0) + (rawLength * multiplier);
-                    }
-                    updates.buildingData = newBD;
+                } else if (activeWizardTool && activeWizardTool.startsWith('roof-') && activeWizardTool !== 'roof-plane') {
+                    const { scale: s, pageScales } = get();
+                    updates.buildingData = {
+                        ...get().buildingData,
+                        ...recalculateRoofData(allMeasurements, s, pageScales)
+                    };
                 }
 
                 set(updates);
@@ -389,16 +589,33 @@ export const useStore = create<AppState>()(
                         if (processedUpdates.group === '') processedUpdates.group = undefined;
                         else processedUpdates.group = processedUpdates.group.trim();
                     }
-                    return {measurements: s.measurements.map(m => m.id === id ? {...m, ...processedUpdates} : m)};
+                    const newMeasurements = s.measurements.map(m => m.id === id ? {...m, ...processedUpdates} : m);
+                    const target = s.measurements.find(m => m.id === id);
+                    const roofChanged = target?.roofLineType || processedUpdates.roofLineType !== undefined || processedUpdates.points || processedUpdates.pitch !== undefined;
+                    if (roofChanged) {
+                        return {
+                            measurements: newMeasurements,
+                            buildingData: { ...s.buildingData, ...recalculateRoofData(newMeasurements, s.scale, s.pageScales) }
+                        };
+                    }
+                    return { measurements: newMeasurements };
                 });
             },
 
             deleteMeasurement: (id) => {
                 get().commitHistory();
-                set((s) => ({
-                    measurements: s.measurements.filter(m => m.id !== id),
-                    activeMeasurementId: s.activeMeasurementId === id ? null : s.activeMeasurementId
-                }));
+                set((s) => {
+                    const deleted = s.measurements.find(m => m.id === id);
+                    const remaining = s.measurements.filter(m => m.id !== id);
+                    const result: any = {
+                        measurements: remaining,
+                        activeMeasurementId: s.activeMeasurementId === id ? null : s.activeMeasurementId
+                    };
+                    if (deleted?.roofLineType) {
+                        result.buildingData = { ...s.buildingData, ...recalculateRoofData(remaining, s.scale, s.pageScales) };
+                    }
+                    return result;
+                });
             },
             setMeasurements: (measurements) => { get().commitHistory(); set({ measurements }); },
             setGroupColor: (group, color) => { get().commitHistory(); set(s => ({ groupColors: { ...s.groupColors, [group]: color } })); },

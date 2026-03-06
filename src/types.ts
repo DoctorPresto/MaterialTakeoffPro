@@ -33,6 +33,10 @@ export interface Measurement {
 
     // NEW: Property for Roof Wizard logic
     roofLineType?: RoofLineType;
+
+    // Roof Plane properties
+    roofPlaneIndex?: number;  // 1-based index for roof plane shapes
+    roofPlaneShape?: 'rectangle' | 'triangle' | 'trapezoid' | 'custom';  // original shape type
 }
 
 export interface MaterialVariant {
@@ -88,8 +92,9 @@ export interface AssemblyDef {
 
 export type VariableSource =
     | { type: 'manual'; value: number | string  }
-    | { type: 'measurement'; measurementId: string; property: 'length' | 'area' | 'count' | 'perimeter' } // Added 'perimeter'
-    | { type: 'measurementGroup'; groupId: string; property: 'length' | 'area' | 'count' | 'linear' }; // Added 'linear'
+    | { type: 'measurement'; measurementId: string; property: 'length' | 'area' | 'count' | 'perimeter' }
+    | { type: 'measurementGroup'; groupId: string; property: 'length' | 'area' | 'count' | 'linear' }
+    | { type: 'buildingData'; field: string };
 
 export interface ProjectAssembly {
     id: string;

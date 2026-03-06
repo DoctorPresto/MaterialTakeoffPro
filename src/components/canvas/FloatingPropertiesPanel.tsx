@@ -23,6 +23,7 @@ export const FloatingPropertiesPanel = ({
     const [group, setGroup] = useState(measurement.group || '');
     const [rotation, setRotation] = useState(measurement.rotation || 0);
     const [pitch, setPitch] = useState(measurement.pitch || 0);
+    const [roofLineType, setRoofLineType] = useState(measurement.roofLineType || '');
 
     // Labels State
     const [labels, setLabels] = useState(measurement.labels || {});
@@ -45,6 +46,7 @@ export const FloatingPropertiesPanel = ({
         setRotation(measurement.rotation || 0);
         setPitch(measurement.pitch || 0);
         setLabels(measurement.labels || {});
+        setRoofLineType(measurement.roofLineType || '');
     }, [measurement]);
 
     const handleNameChange = (value: string) => {
@@ -60,6 +62,16 @@ export const FloatingPropertiesPanel = ({
     const handlePitchChange = (value: number) => {
         setPitch(value);
         onUpdate({ pitch: value });
+    };
+
+    const handleRoofLineTypeChange = (value: string) => {
+        const newType = value || null;
+        setRoofLineType(value);
+        onUpdate({ roofLineType: newType });
+        if (newType && !group) {
+            setGroup('Roof');
+            onUpdate({ roofLineType: newType, group: 'Roof' });
+        }
     };
 
     const toggleLabel = (key: keyof typeof labels) => {
@@ -175,8 +187,27 @@ export const FloatingPropertiesPanel = ({
                         </datalist>
                     </div>
 
+                    {/* Roof Line Type (for line measurements) */}
+                    {measurement.type === 'line' && (
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Roof Line Type</label>
+                            <select
+                                value={roofLineType}
+                                onChange={(e) => handleRoofLineTypeChange(e.target.value)}
+                                className="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                            >
+                                <option value="">None</option>
+                                <option value="hip">Hip</option>
+                                <option value="valley">Valley</option>
+                                <option value="ridge">Ridge</option>
+                                <option value="eave">Eave</option>
+                                <option value="gable">Gable</option>
+                            </select>
+                        </div>
+                    )}
+
                     {/* Geometry & Slope */}
-                    {measurement.type === 'shape' && (
+                    {(measurement.type === 'shape' || roofLineType) && (
                         <div>
                             <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Pitch / Slope (Rise per 12")</label>
                             <div className="flex items-center gap-2">

@@ -1,11 +1,12 @@
-import {AssemblyDef, BomLine, ItemSet, MaterialDef, Measurement, ProjectAssembly, VariableSource} from './types';
+import {AssemblyDef, BomLine, BuildingData, ItemSet, MaterialDef, Measurement, ProjectAssembly, VariableSource} from './types';
 import {applyRounding, evaluateFormula, getPathLength, getPolygonArea} from './utils/math';
 
 export const resolveValue = (
-    source: VariableSource | undefined, // Allow undefined
+    source: VariableSource | undefined,
     measurements: Measurement[],
     globalScale: number,
-    pageScales: Record<number, number> = {}
+    pageScales: Record<number, number> = {},
+    buildingData?: BuildingData
 ): number => {
     if (!source) return 0;
 
@@ -89,6 +90,29 @@ export const resolveValue = (
             });
             return totalArea;
         }
+    }
+
+    if (source.type === 'buildingData' && buildingData) {
+        const field = source.field;
+        // Computed fields — roof plane totals
+        if (field === 'roofTotalPlanArea' || field === 'roofTotalTrueArea') {
+            const planes = measurements.filter(m => m.roofPlaneIndex && m.type === 'shape');
+            let total = 0;
+            planes.forEach(m => {
+                const effectiveScale = pageScales[m.pageIndex] || globalScale;
+                const planArea = getPolygonArea(m.points) / (effectiveScale * effectiveScale);
+                if (field === 'roofTotalTrueArea') {
+                    const pitch = m.pitch || 4;
+                    total += planArea * Math.sqrt(1 + Math.pow(pitch / 12, 2));
+                } else {
+                    total += planArea;
+                }
+            });
+            return total;
+        }
+        // Direct buildingData fields
+        const val = (buildingData as any)[field];
+        return typeof val === 'number' ? val : 0;
     }
 
     return 0;
@@ -194,14 +218,15 @@ export const generateBOM = (
     materials: MaterialDef[],
     scale: number,
     itemSetName: string = "Unknown Set",
-    pageScales: Record<number, number> = {}
+    pageScales: Record<number, number> = {},
+    buildingData?: BuildingData
 ): BomLine[] => {
     const def = allDefs.find(a => a.id === instance.assemblyDefId);
     if (!def) return [];
 
     const context: Record<string, number> = {};
     def.variables.forEach(v => {
-        const val = resolveValue(instance.variableValues[v.id], measurements, scale, pageScales);
+        const val = resolveValue(instance.variableValues[v.id], measurements, scale, pageScales, buildingData);
         context[v.name] = val;
     });
 
@@ -214,7 +239,8 @@ export const generateGlobalBOM = (
     measurements: Measurement[],
     materials: MaterialDef[],
     scale: number,
-    pageScales: Record<number, number> = {}
+    pageScales: Record<number, number> = {},
+    buildingData?: BuildingData
 ): BomLine[] => {
     let fullBOM: BomLine[] = [];
 
@@ -228,7 +254,7 @@ export const generateGlobalBOM = (
         order.forEach(id => {
             if (assemblyMap.has(id)) {
                 const instance = assemblyMap.get(id)!;
-                const lines = generateBOM(instance, allDefs, measurements, materials, scale, set.name, pageScales);
+                const lines = generateBOM(instance, allDefs, measurements, materials, scale, set.name, pageScales, buildingData);
                 fullBOM.push(...lines);
                 processedIds.add(id);
             } else if (manualMap.has(id)) {
@@ -248,7 +274,7 @@ export const generateGlobalBOM = (
         if (set.assemblies) {
             set.assemblies.forEach(instance => {
                 if (!processedIds.has(instance.id)) {
-                    const lines = generateBOM(instance, allDefs, measurements, materials, scale, set.name, pageScales);
+                    const lines = generateBOM(instance, allDefs, measurements, materials, scale, set.name, pageScales, buildingData);
                     fullBOM.push(...lines);
                 }
             });

@@ -81,7 +81,7 @@ const CollapsibleItemSet = ({
     onUpdateManual: (id: string, updates: any) => void,
     onDeleteManual: (id: string) => void
 }) => {
-    const { materials, scale, pageScales } = useStore();
+    const { materials, scale, pageScales, buildingData } = useStore();
     const [isOpen, setIsOpen] = useState(true);
     const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
     const [selectorKey, setSelectorKey] = useState(0);
@@ -112,6 +112,18 @@ const CollapsibleItemSet = ({
                 });
             }
         });
+
+        // Roof totals from building data
+        const roofItems = [
+            { id: 'roof-roofHipLength', name: 'Total Hip Length', secondaryText: 'feet' },
+            { id: 'roof-roofRidgeLength', name: 'Total Ridge Length', secondaryText: 'feet' },
+            { id: 'roof-roofEaveLength', name: 'Total Eave Length', secondaryText: 'feet' },
+            { id: 'roof-roofGableLength', name: 'Total Gable Length', secondaryText: 'feet' },
+            { id: 'roof-valleyLength', name: 'Total Valley Length', secondaryText: 'feet' },
+            { id: 'roof-roofTotalPlanArea', name: 'Roof Total Plan Area', secondaryText: 'sq ft' },
+            { id: 'roof-roofTotalTrueArea', name: 'Roof Total True Area', secondaryText: 'sq ft' },
+        ];
+        roofItems.forEach(r => items.push({ ...r, category: 'Roof Totals' }));
 
         return items;
     }, [measurements]);
@@ -235,7 +247,7 @@ const CollapsibleItemSet = ({
                                 if (def) {
                                     def.variables.forEach(v => {
                                         const source = inst.variableValues[v.id];
-                                        if (source) context[v.name] = resolveValue(source, measurements, scale, pageScales);
+                                        if (source) context[v.name] = resolveValue(source, measurements, scale, pageScales, buildingData);
                                         else context[v.name] = 0;
                                     });
                                 }
@@ -290,7 +302,9 @@ const CollapsibleItemSet = ({
                                                             ? (currentVal as any).measurementId
                                                             : currentVal?.type === 'measurementGroup'
                                                                 ? `group-${(currentVal as any).groupId}`
-                                                                : 'manual';
+                                                                : currentVal?.type === 'buildingData'
+                                                                    ? `roof-${(currentVal as any).field}`
+                                                                    : 'manual';
 
                                                         return (
                                                             <div key={v.id}>
@@ -325,6 +339,9 @@ const CollapsibleItemSet = ({
                                                                             onChange={(id) => {
                                                                                 if (id === 'manual') {
                                                                                     onUpdateVar(inst.id, v.id, { type: 'manual', value: 0 });
+                                                                                } else if (id.startsWith('roof-')) {
+                                                                                    const field = id.replace('roof-', '');
+                                                                                    onUpdateVar(inst.id, v.id, { type: 'buildingData', field });
                                                                                 } else if (id.startsWith('group-')) {
                                                                                     const groupId = id.replace('group-', '');
                                                                                     const property = v.type === 'area' ? 'area' : v.type === 'count' ? 'count' : 'length';

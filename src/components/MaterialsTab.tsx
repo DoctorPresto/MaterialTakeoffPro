@@ -4,8 +4,8 @@ import TakeoffSidebar from './TakeoffSidebar';
 import {Download} from 'lucide-react';
 
 const MaterialsTab = () => {
-    const {itemSets, assemblyDefs, measurements, materials, scale} = useStore();
-    const bom = generateGlobalBOM(itemSets, assemblyDefs, measurements, materials, scale);
+    const {itemSets, assemblyDefs, measurements, materials, scale, pageScales, buildingData} = useStore();
+    const bom = generateGlobalBOM(itemSets, assemblyDefs, measurements, materials, scale, pageScales, buildingData);
 
     const handleExportCSV = () => {
         const headers = ["Item Set", "SKU", "Description", "Quantity", "UOM"];

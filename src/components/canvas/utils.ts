@@ -16,6 +16,14 @@ export const GROUP_COLORS = [
     '#f59e0b', // amber
 ];
 
+export const ROOF_LINE_COLORS: Record<string, string> = {
+    hip: '#f97316',    // orange
+    valley: '#3b82f6', // blue
+    ridge: '#22c55e',  // green
+    eave: '#6b7280',   // gray
+    gable: '#a855f7',  // purple
+};
+
 export const getGroupColor = (group: string | undefined, overrideColors: Record<string, string>): string => {
     if (!group) return '#2563eb'; // default blue for ungrouped
     if (overrideColors[group]) return overrideColors[group];

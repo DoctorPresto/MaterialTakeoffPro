@@ -20,6 +20,7 @@ import {
     generateLinePath,
     getFormattedDistance,
     getGroupColor,
+    ROOF_LINE_COLORS,
     MAX_ZOOM,
     MIN_ZOOM,
     ZOOM_INCREMENT
@@ -92,7 +93,8 @@ const Canvas = () => {
         addMeasurement, updateMeasurement, updateMeasurementTransient, deleteMeasurement, deletePoint, insertPointAfter,
         setScale, setIsCalibrating, setPageIndex, zoom, pan, setViewport, setTool, scale,
         commitHistory, undo, redo, groupColors, setGroupColor, setGroupVisibility,
-        pageScales, setPageScale, setMeasurements, toggleScaleLock
+        pageScales, setPageScale, setMeasurements, toggleScaleLock,
+        planeBuilderActive, planeBuilderSelectedIds, togglePlaneBuilderLine,
     } = useStore();
 
     const [points, setPoints] = useState<Point[]>([]);
@@ -880,14 +882,38 @@ const Canvas = () => {
                                                     <polygon
                                                         points={m.points.map(p => `${p.x},${p.y}`).join(' ')}
                                                         fill={(() => {
+                                                            // Roof planes get distinct per-plane colors
+                                                            if (m.roofPlaneIndex) {
+                                                                const planeColors = [
+                                                                    'rgba(99, 102, 241, 0.25)',  // indigo
+                                                                    'rgba(34, 197, 94, 0.25)',   // green
+                                                                    'rgba(249, 115, 22, 0.25)',  // orange
+                                                                    'rgba(168, 85, 247, 0.25)',  // purple
+                                                                    'rgba(14, 165, 233, 0.25)',  // sky
+                                                                    'rgba(236, 72, 153, 0.25)',  // pink
+                                                                    'rgba(234, 179, 8, 0.25)',   // yellow
+                                                                    'rgba(20, 184, 166, 0.25)',  // teal
+                                                                ];
+                                                                const idx = ((m.roofPlaneIndex - 1) % planeColors.length);
+                                                                return selectedShape === m.id
+                                                                    ? planeColors[idx].replace('0.25', '0.45')
+                                                                    : planeColors[idx];
+                                                            }
                                                             const opacity = selectedShape === m.id ? '0.4' : '0.3';
                                                             const r = parseInt(color.slice(1, 3), 16);
                                                             const g = parseInt(color.slice(3, 5), 16);
                                                             const b = parseInt(color.slice(5, 7), 16);
                                                             return `rgba(${r}, ${g}, ${b}, ${opacity})`;
                                                         })()}
-                                                        stroke={selectedShape === m.id ? "#3b82f6" : color}
+                                                        stroke={(() => {
+                                                            if (m.roofPlaneIndex) {
+                                                                const planeStrokes = ['#6366f1','#22c55e','#f97316','#a855f7','#0ea5e9','#ec4899','#eab308','#14b8a6'];
+                                                                return selectedShape === m.id ? '#3b82f6' : planeStrokes[(m.roofPlaneIndex - 1) % planeStrokes.length];
+                                                            }
+                                                            return selectedShape === m.id ? "#3b82f6" : color;
+                                                        })()}
                                                         strokeWidth={Math.max(1, (selectedShape === m.id ? 3 : 2) / zoom)}
+                                                        strokeDasharray={m.roofPlaneIndex ? `${8/zoom} ${4/zoom}` : undefined}
                                                         vectorEffect="non-scaling-stroke"
                                                         className="cursor-pointer"
                                                         onClick={(e) => {
@@ -895,6 +921,19 @@ const Canvas = () => {
                                                             if (activeTool === 'select') setSelectedShape(m.id);
                                                         }}
                                                     />
+                                                    {/* Roof plane index label at centroid */}
+                                                    {m.roofPlaneIndex && (
+                                                        <text
+                                                            x={labelPos.x} y={labelPos.y - (fontSize * 1.4)}
+                                                            textAnchor="middle" dominantBaseline="middle"
+                                                            fill={['#6366f1','#22c55e','#f97316','#a855f7','#0ea5e9','#ec4899','#eab308','#14b8a6'][(m.roofPlaneIndex - 1) % 8]}
+                                                            fontSize={fontSize * 1.2} fontWeight="bold"
+                                                            pointerEvents="none"
+                                                            style={{ textShadow: '0px 0px 3px white, 0px 0px 6px white' }}
+                                                        >
+                                                            {m.name || `Plane ${m.roofPlaneIndex}`}
+                                                        </text>
+                                                    )}
 
                                                     {m.points.map((p, idx) => {
                                                         const nextP = m.points[(idx + 1) % m.points.length];
@@ -916,15 +955,38 @@ const Canvas = () => {
                                                 </>
                                             ) : (
                                                 <>
+                                                    {/* Selection highlight glow for plane building */}
+                                                    {m.roofLineType && planeBuilderActive && planeBuilderSelectedIds.includes(m.id) && (
+                                                        <path
+                                                            d={generateLinePath(m.points)}
+                                                            fill="none"
+                                                            stroke="#6366f1"
+                                                            strokeWidth={Math.max(6, 10 / zoom)}
+                                                            strokeOpacity={0.4}
+                                                            vectorEffect="non-scaling-stroke"
+                                                            pointerEvents="none"
+                                                        />
+                                                    )}
                                                     <path
                                                         d={generateLinePath(m.points)}
                                                         fill="none"
-                                                        stroke={selectedShape === m.id ? "#3b82f6" : "#ef4444"}
-                                                        strokeWidth={Math.max(1, (selectedShape === m.id ? 4 : 3) / zoom)}
+                                                        stroke={
+                                                            planeBuilderActive && planeBuilderSelectedIds.includes(m.id)
+                                                                ? "#6366f1"
+                                                                : selectedShape === m.id
+                                                                    ? "#3b82f6"
+                                                                    : (m.roofLineType ? ROOF_LINE_COLORS[m.roofLineType] || "#ef4444" : "#ef4444")
+                                                        }
+                                                        strokeWidth={Math.max(1, (selectedShape === m.id || (planeBuilderActive && planeBuilderSelectedIds.includes(m.id)) ? 4 : 3) / zoom)}
                                                         vectorEffect="non-scaling-stroke"
                                                         className="cursor-pointer"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
+                                                            // If in line-selection mode and this is a roof line, toggle selection
+                                                            if (planeBuilderActive && m.roofLineType) {
+                                                                togglePlaneBuilderLine(m.id);
+                                                                return;
+                                                            }
                                                             if (activeTool === 'select') setSelectedShape(m.id);
                                                         }}
                                                     />
