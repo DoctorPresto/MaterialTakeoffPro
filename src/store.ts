@@ -3,7 +3,7 @@ import {persist} from 'zustand/middleware';
 import {v4 as uuidv4} from 'uuid';
 import {
     AssemblyDef, AssemblyNode, AssemblyVariable, BuildingData, EstimateFile, ItemSet, ManualItem, MaterialDef, Measurement,
-    MeasurementType, Point, ProjectAssembly, ProjectInfo, RecentFile, VariableSource
+    MeasurementType, Point, ProjectAssembly, ProjectInfo, RecentFile, VariableSource, RoofLineType
 } from './types';
 import { getPathLength, getSlopeMultiplier, getPlanHipToTrueHipMultiplier } from './utils/math';
 import { generatePlanePolygon } from './utils/roofOutline';
@@ -21,19 +21,62 @@ const generateUniqueName = (baseName: string, existingNames: string[]): string =
 
 const recalculateRoofData = (measurements: Measurement[], scale: number, pageScales: Record<number, number>): Partial<BuildingData> => {
     let roofRidgeLength = 0, roofHipLength = 0, roofEaveLength = 0, roofGableLength = 0, valleyLength = 0;
+    
+    // Set to track processed shared edge keys (NodeA_NodeB) to avoid double-counting
+    const processedEdgeKeys = new Set<string>();
+
     measurements.forEach(m => {
-        if (!m.roofLineType) return;
-        const effectiveScale = pageScales[m.pageIndex] || scale;
-        const rawLength = getPathLength(m.points) / effectiveScale;
-        const pitch = m.pitch || 4;
-        switch (m.roofLineType) {
-            case 'ridge': roofRidgeLength += rawLength; break;
-            case 'eave': roofEaveLength += rawLength; break;
-            case 'gable': roofGableLength += rawLength * getSlopeMultiplier(pitch); break;
-            case 'hip': roofHipLength += rawLength * getPlanHipToTrueHipMultiplier(pitch); break;
-            case 'valley': valleyLength += rawLength * getPlanHipToTrueHipMultiplier(pitch); break;
+        // Legacy standalone lines
+        if (m.type === 'line' && m.roofLineType) {
+            const effectiveScale = pageScales[m.pageIndex] || scale;
+            const rawLength = getPathLength(m.points) / effectiveScale;
+            const pitch = m.pitch || 4;
+            switch (m.roofLineType) {
+                case 'ridge': roofRidgeLength += rawLength; break;
+                case 'eave': roofEaveLength += rawLength; break;
+                case 'gable': roofGableLength += rawLength * getSlopeMultiplier(pitch); break;
+                case 'hip': roofHipLength += rawLength * getPlanHipToTrueHipMultiplier(pitch); break;
+                case 'valley': valleyLength += rawLength * getPlanHipToTrueHipMultiplier(pitch); break;
+            }
+        }
+        
+        // Shape-first planes with classified edges
+        if (m.type === 'shape' && m.edgeTypes) {
+            const effectiveScale = pageScales[m.pageIndex] || scale;
+            const pitch = m.pitch || 4;
+            
+            for (let i = 0; i < m.points.length; i++) {
+                const type = m.edgeTypes[i];
+                if (!type || type === 'none') continue;
+
+                const p1 = m.points[i];
+                const p2 = m.points[(i + 1) % m.points.length];
+                
+                // Deduplication logic for shared edges (Hips, Valleys, Ridges)
+                if ((type === 'hip' || type === 'valley' || type === 'ridge') && p1.nodeId && p2.nodeId) {
+                    const edgeKey = [p1.nodeId, p2.nodeId].sort().join('_');
+                    if (processedEdgeKeys.has(edgeKey)) {
+                        continue; // Already counted this physical edge from an adjacent plane
+                    }
+                    processedEdgeKeys.add(edgeKey);
+                }
+
+                // Calculate segment length
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const rawLength = Math.sqrt(dx * dx + dy * dy) / effectiveScale;
+
+                switch (type) {
+                    case 'ridge': roofRidgeLength += rawLength; break;
+                    case 'eave': roofEaveLength += rawLength; break;
+                    case 'gable': roofGableLength += rawLength * getSlopeMultiplier(pitch); break;
+                    case 'hip': roofHipLength += rawLength * getPlanHipToTrueHipMultiplier(pitch); break;
+                    case 'valley': valleyLength += rawLength * getPlanHipToTrueHipMultiplier(pitch); break;
+                }
+            }
         }
     });
+    
     return { roofRidgeLength, roofHipLength, roofEaveLength, roofGableLength, valleyLength };
 };
 
@@ -81,13 +124,23 @@ interface AppState {
     favoriteItemSets: ItemSet[];
     groupColors: Record<string, string>;
 
-    // Plane builder state (for line-selection-based plane creation)
-    planeBuilderActive: boolean;
-    planeBuilderSelectedIds: string[];
+
 
     // NEW: Global Wizard Step State
     activeWizardStep: WizardStepType;
     setWizardStep: (step: WizardStepType) => void;
+
+    // Phase 5: Shape-First Edge Classification State
+    activeRoofMode: 'none' | 'trace' | 'slope' | 'classify';
+    setRoofMode: (mode: 'none' | 'trace' | 'slope' | 'classify') => void;
+    
+    selectedRoofPlaneId: string | null;
+    setSelectedRoofPlaneId: (id: string | null) => void;
+    
+    selectedRoofEdgeIndex: number | null;
+    setSelectedRoofEdgeIndex: (index: number | null) => void;
+    
+    classifySelectedEdge: (type: RoofLineType) => void;
 
     createEstimate: () => void;
     closeEstimate: () => void;
@@ -115,10 +168,6 @@ interface AppState {
     setGroupColor: (group: string, color: string) => void;
     setGroupVisibility: (group: string | undefined, hidden: boolean) => void;
     addRoofPlaneFromDimensions: (shape: 'rectangle' | 'triangle' | 'trapezoid' | 'custom', dims: { width?: number; height?: number; topBase?: number; bottomBase?: number; customArea?: number }, pitch: number) => void;
-    createPlaneFromLines: (lineIds: string[]) => boolean;
-    togglePlaneBuilderLine: (id: string) => void;
-    clearPlaneBuilder: () => void;
-    setPlaneBuilderActive: (active: boolean) => void;
     deletePoint: (measurementId: string, pointIndex: number) => void;
     insertPointAfter: (measurementId: string, pointIndex: number, clickPoint?: Point) => void;
 
@@ -198,10 +247,13 @@ export const useStore = create<AppState>()(
             favoriteItemSets: [],
             groupColors: {},
 
-            planeBuilderActive: false,
             planeBuilderSelectedIds: [],
 
             activeWizardStep: 'none',
+
+            activeRoofMode: 'none',
+            selectedRoofPlaneId: null,
+            selectedRoofEdgeIndex: null,
 
             commitHistory: () => set((state) => {
                 const current: HistoryState = {
@@ -328,6 +380,34 @@ export const useStore = create<AppState>()(
             // Set Wizard Step (Global UI State)
             setWizardStep: (step) => set({ activeWizardStep: step }),
 
+            setRoofMode: (mode) => set({ activeRoofMode: mode }),
+            setSelectedRoofPlaneId: (id) => set({ selectedRoofPlaneId: id }),
+            setSelectedRoofEdgeIndex: (index) => set({ selectedRoofEdgeIndex: index }),
+            
+            classifySelectedEdge: (type: RoofLineType) => {
+                get().commitHistory();
+                set(s => {
+                    const planeId = s.selectedRoofPlaneId;
+                    const edgeIdx = s.selectedRoofEdgeIndex;
+                    if (!planeId || edgeIdx === null) return s;
+                    
+                    const newMeasurements = s.measurements.map(m => {
+                        if (m.id === planeId && m.type === 'shape') {
+                            const edgeTypes = m.edgeTypes ? [...m.edgeTypes] : new Array(m.points.length).fill('none');
+                            edgeTypes[edgeIdx] = type || 'none';
+                            return { ...m, edgeTypes };
+                        }
+                        return m;
+                    });
+                    
+                    return { measurements: newMeasurements };
+                });
+                // After updating edge type, recalculate globals
+                const s = get();
+                const newData = recalculateRoofData(s.measurements, s.scale, s.pageScales);
+                s.updateBuildingData(newData);
+            },
+
             setWizardTool: (tag) => set({
                 activeWizardTool: tag,
                 activeTool: tag ? (tag === 'roof-plane' ? 'shape' : 'line') : 'select'
@@ -368,130 +448,9 @@ export const useStore = create<AppState>()(
                 set({ measurements: [...measurements, newMeasurement] });
             },
 
-            createPlaneFromLines: (lineIds) => {
-                const { measurements, buildingData, scale, pageScales, activePageIndex, zoom, pan } = get();
 
-                // Gather selected lines and compute their real-world lengths
-                const selectedLines = lineIds.map(id => measurements.find(m => m.id === id)).filter(Boolean) as Measurement[];
-                if (selectedLines.length < 3) return false;
 
-                // Categorize lines by type and compute lengths in feet
-                let eaveLengthFt = 0;
-                let ridgeLengthFt = 0;
-                let rafterLengthFt = 0;
-                let rafterCount = 0;
 
-                selectedLines.forEach(m => {
-                    const effectiveScale = pageScales[m.pageIndex] || scale;
-                    const lengthFt = getPathLength(m.points) / effectiveScale;
-                    const type = m.roofLineType || 'eave';
-
-                    if (type === 'eave') {
-                        eaveLengthFt += lengthFt;
-                    } else if (type === 'ridge') {
-                        ridgeLengthFt += lengthFt;
-                    } else {
-                        // hip, valley, gable → all contribute to rafter/slope dimension
-                        rafterLengthFt += lengthFt;
-                        rafterCount++;
-                    }
-                });
-
-                // Average rafter length if multiple rafter-type lines selected
-                const avgRafterFt = rafterCount > 0 ? rafterLengthFt / rafterCount : 0;
-
-                // Determine shape type from line types present
-                let shape: 'rectangle' | 'triangle' | 'trapezoid';
-                let planAreaFt: number;
-
-                if (ridgeLengthFt > 0 && eaveLengthFt > 0) {
-                    if (Math.abs(ridgeLengthFt - eaveLengthFt) < 1) {
-                        // Ridge ≈ Eave → rectangle (gable plane)
-                        shape = 'rectangle';
-                        planAreaFt = eaveLengthFt * avgRafterFt;
-                    } else {
-                        // Ridge ≠ Eave → trapezoid (hip side)
-                        shape = 'trapezoid';
-                        planAreaFt = ((ridgeLengthFt + eaveLengthFt) / 2) * avgRafterFt;
-                    }
-                } else if (eaveLengthFt > 0 && ridgeLengthFt === 0) {
-                    // No ridge → triangle (hip end)
-                    shape = 'triangle';
-                    planAreaFt = (eaveLengthFt * avgRafterFt) / 2;
-                } else {
-                    // Fallback: use all selected line lengths for a rough rectangle
-                    shape = 'rectangle';
-                    const totalLength = selectedLines.reduce((sum, m) => {
-                        const effectiveScale = pageScales[m.pageIndex] || scale;
-                        return sum + getPathLength(m.points) / effectiveScale;
-                    }, 0);
-                    planAreaFt = (totalLength / 4) * (totalLength / 4); // Rough square
-                }
-
-                if (planAreaFt <= 0) return false;
-
-                get().commitHistory();
-
-                // Generate polygon at center of current viewport
-                const effectiveScale = pageScales[activePageIndex] || scale;
-                const cx = (-pan.x + window.innerWidth / 2) / zoom;
-                const cy = (-pan.y + window.innerHeight / 2) / zoom;
-
-                const existingPlanes = measurements.filter(m => m.roofPlaneIndex);
-                const nextIndex = existingPlanes.length > 0
-                    ? Math.max(...existingPlanes.map(m => m.roofPlaneIndex!)) + 1
-                    : 1;
-
-                const planePitch = buildingData.roofPitch || 4;
-
-                // Generate appropriately-sized polygon from real dimensions
-                const points = generatePlanePolygon(
-                    shape,
-                    shape === 'rectangle'
-                        ? { width: eaveLengthFt, height: avgRafterFt }
-                        : shape === 'triangle'
-                            ? { width: eaveLengthFt, height: avgRafterFt }
-                            : { topBase: ridgeLengthFt, bottomBase: eaveLengthFt, height: avgRafterFt },
-                    effectiveScale,
-                    cx,
-                    cy
-                );
-
-                const newMeasurement: Measurement = {
-                    id: uuidv4(),
-                    name: `Plane ${nextIndex}`,
-                    type: 'shape',
-                    points,
-                    pageIndex: activePageIndex,
-                    tags: ['roof-plane'],
-                    group: 'Roof Planes',
-                    pitch: planePitch,
-                    roofPlaneIndex: nextIndex,
-                    roofPlaneShape: shape,
-                    labels: { showArea: true },
-                };
-
-                set({ measurements: [...measurements, newMeasurement] });
-                return true;
-            },
-
-            togglePlaneBuilderLine: (id) => {
-                set(s => {
-                    const ids = s.planeBuilderSelectedIds;
-                    const idx = ids.indexOf(id);
-                    if (idx >= 0) {
-                        return { planeBuilderSelectedIds: ids.filter(i => i !== id) };
-                    }
-                    return { planeBuilderSelectedIds: [...ids, id] };
-                });
-            },
-
-            clearPlaneBuilder: () => set({ planeBuilderSelectedIds: [], planeBuilderActive: false }),
-
-            setPlaneBuilderActive: (active) => set({
-                planeBuilderActive: active,
-                planeBuilderSelectedIds: active ? [] : [],
-            }),
 
             setActiveMeasurement: (activeMeasurementId) => set({activeMeasurementId}),
             setIsCalibrating: (isCalibrating) => set({isCalibrating, activeTool: 'select'}),
@@ -572,9 +531,39 @@ export const useStore = create<AppState>()(
             },
 
             updateMeasurementTransient: (id, updates) => {
-                set((s) => ({
-                    measurements: s.measurements.map(m => m.id === id ? {...m, ...updates} : m)
-                }));
+                set((s) => {
+                    let newMeasurements = s.measurements.map(m => m.id === id ? {...m, ...updates} : m);
+                    
+                    // Global Node Dragging
+                    if (updates.points) {
+                        const activeMeas = newMeasurements.find(m => m.id === id);
+                        if (activeMeas) {
+                            const nodeUpdates = new Map<string, {x: number, y: number}>();
+                            activeMeas.points.forEach(p => {
+                                if (p.nodeId) nodeUpdates.set(p.nodeId, {x: p.x, y: p.y});
+                            });
+                            
+                            if (nodeUpdates.size > 0) {
+                                newMeasurements = newMeasurements.map(m => {
+                                    if (m.id === id) return m; // Already updated
+                                    let changed = false;
+                                    const newPoints = m.points.map(p => {
+                                        if (p.nodeId && nodeUpdates.has(p.nodeId)) {
+                                            changed = true;
+                                            const update = nodeUpdates.get(p.nodeId)!;
+                                            return { ...p, x: update.x, y: update.y };
+                                        }
+                                        return p;
+                                    });
+                                    if (changed) return { ...m, points: newPoints };
+                                    return m;
+                                });
+                            }
+                        }
+                    }
+
+                    return { measurements: newMeasurements };
+                });
             },
 
             updateMeasurement: (id, updates) => {
@@ -589,9 +578,39 @@ export const useStore = create<AppState>()(
                         if (processedUpdates.group === '') processedUpdates.group = undefined;
                         else processedUpdates.group = processedUpdates.group.trim();
                     }
-                    const newMeasurements = s.measurements.map(m => m.id === id ? {...m, ...processedUpdates} : m);
+                    
+                    let newMeasurements = s.measurements.map(m => m.id === id ? {...m, ...processedUpdates} : m);
+                    
+                    // Global Node Dragging hook
+                    if (processedUpdates.points) {
+                        const activeMeas = newMeasurements.find(m => m.id === id);
+                        if (activeMeas) {
+                            const nodeUpdates = new Map<string, {x: number, y: number}>();
+                            activeMeas.points.forEach(p => {
+                                if (p.nodeId) nodeUpdates.set(p.nodeId, {x: p.x, y: p.y});
+                            });
+                            
+                            if (nodeUpdates.size > 0) {
+                                newMeasurements = newMeasurements.map(m => {
+                                    if (m.id === id) return m; 
+                                    let changed = false;
+                                    const newPoints = m.points.map(p => {
+                                        if (p.nodeId && nodeUpdates.has(p.nodeId)) {
+                                            changed = true;
+                                            const update = nodeUpdates.get(p.nodeId)!;
+                                            return { ...p, x: update.x, y: update.y };
+                                        }
+                                        return p;
+                                    });
+                                    if (changed) return { ...m, points: newPoints };
+                                    return m;
+                                });
+                            }
+                        }
+                    }
+
                     const target = s.measurements.find(m => m.id === id);
-                    const roofChanged = target?.roofLineType || processedUpdates.roofLineType !== undefined || processedUpdates.points || processedUpdates.pitch !== undefined;
+                    const roofChanged = target?.roofLineType || target?.roofPlaneIndex || processedUpdates.roofLineType !== undefined || processedUpdates.points || processedUpdates.pitch !== undefined;
                     if (roofChanged) {
                         return {
                             measurements: newMeasurements,
@@ -649,7 +668,14 @@ export const useStore = create<AppState>()(
                         if (!newPoint) return m;
                         const newPoints = [...m.points];
                         newPoints.splice(idx + 1, 0, newPoint);
-                        return { ...m, points: newPoints };
+                        
+                        let newEdgeTypes = m.edgeTypes;
+                        if (newEdgeTypes) {
+                            newEdgeTypes = [...newEdgeTypes];
+                            newEdgeTypes.splice(idx + 1, 0, newEdgeTypes[idx] || 'none');
+                        }
+                        
+                        return { ...m, points: newPoints, edgeTypes: newEdgeTypes };
                     })
                 }));
             },

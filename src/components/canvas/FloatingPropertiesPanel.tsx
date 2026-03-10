@@ -207,7 +207,7 @@ export const FloatingPropertiesPanel = ({
                     )}
 
                     {/* Geometry & Slope */}
-                    {(measurement.type === 'shape' || roofLineType) && (
+                    {((measurement.type === 'shape' && measurement.roofPlaneIndex) || roofLineType) && (
                         <div>
                             <label className="block text-xs font-bold text-gray-500 mb-1 uppercase">Pitch / Slope (Rise per 12")</label>
                             <div className="flex items-center gap-2">

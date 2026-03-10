@@ -27,7 +27,7 @@ export const SearchableSelector: React.FC<SearchableSelectorProps> = ({
     const [inputValue, setInputValue] = useState('');
     const [isOpen, setIsOpen] = useState(false);
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-    const [dropdownPosition, setDropdownPosition] = useState({top: 0, left: 0, width: 0, maxHeight: 320});
+    const [dropdownPosition, setDropdownPosition] = useState({top: 0, left: 0, width: 0, maxHeight: 320, isDropUp: false, bottom: 0});
     const containerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -41,16 +41,28 @@ export const SearchableSelector: React.FC<SearchableSelectorProps> = ({
             if (containerRef.current) {
                 const rect = containerRef.current.getBoundingClientRect();
                 const viewportHeight = window.innerHeight;
-                // Calculate space below the input, leaving 10px padding
                 const spaceBelow = viewportHeight - rect.bottom - 10;
+                const spaceAbove = rect.top - 10;
 
-                setDropdownPosition({
-                    top: rect.bottom + 4,
-                    left: rect.left,
-                    width: rect.width,
-                    // Constraint height: Max 320px, Min 100px, or available space
-                    maxHeight: Math.min(320, Math.max(100, spaceBelow))
-                });
+                if (spaceBelow < 250 && spaceAbove > spaceBelow) {
+                    setDropdownPosition({
+                        isDropUp: true,
+                        top: 0,
+                        bottom: viewportHeight - rect.top + 4,
+                        left: rect.left,
+                        width: rect.width,
+                        maxHeight: Math.min(320, spaceAbove)
+                    });
+                } else {
+                    setDropdownPosition({
+                        isDropUp: false,
+                        top: rect.bottom + 4,
+                        bottom: 0,
+                        left: rect.left,
+                        width: rect.width,
+                        maxHeight: Math.min(320, Math.max(100, spaceBelow))
+                    });
+                }
             }
         };
 
@@ -177,7 +189,7 @@ export const SearchableSelector: React.FC<SearchableSelectorProps> = ({
             ref={dropdownRef}
             style={{
                 position: 'fixed',
-                top: `${dropdownPosition.top}px`,
+                ...(dropdownPosition.isDropUp ? { bottom: `${dropdownPosition.bottom}px` } : { top: `${dropdownPosition.top}px` }),
                 left: `${dropdownPosition.left}px`,
                 width: `${dropdownPosition.width}px`,
                 maxHeight: `${dropdownPosition.maxHeight}px`,

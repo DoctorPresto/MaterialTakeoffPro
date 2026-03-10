@@ -1,20 +1,21 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Document, Page, pdfjs} from 'react-pdf';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Document, Page, pdfjs } from 'react-pdf';
 
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-import {useStore} from '../store';
-import {MeasurementType, Point} from '../types';
+import { v4 as uuidv4 } from 'uuid';
+import { useStore } from '../store';
+import { MeasurementType, Point } from '../types';
 import {
-    Check, ChevronLeft, ChevronRight, FileX, Lock, Minus, Plus, RotateCcw, Ruler, Square, Unlock
+    Check, ChevronLeft, ChevronRight, FileX, Lock, Minus, Plus, RotateCcw, Ruler, Square, Unlock, Calculator
 } from 'lucide-react';
 
-import {InputModal} from './canvas/InputModal';
-import {ContextMenu, EdgeContextMenu} from './canvas/ContextMenus';
-import {FloatingDrawingPanel} from './canvas/FloatingDrawingPanel';
-import {FloatingPropertiesPanel} from './canvas/FloatingPropertiesPanel';
-import {PDFPageManager} from './canvas/PDFPageManager';
-import {ProjectWizard} from './canvas/ProjectWizard';
+import { InputModal } from './canvas/InputModal';
+import { ContextMenu, EdgeContextMenu } from './canvas/ContextMenus';
+import { FloatingDrawingPanel } from './canvas/FloatingDrawingPanel';
+import { FloatingPropertiesPanel } from './canvas/FloatingPropertiesPanel';
+import { PDFPageManager } from './canvas/PDFPageManager';
+import { ProjectWizard } from './canvas/ProjectWizard';
 
 import {
     generateLinePath,
@@ -25,13 +26,13 @@ import {
     MIN_ZOOM,
     ZOOM_INCREMENT
 } from './canvas/utils';
-import {getDistance, getPathLength, getPolygonArea, getPolygonCentroid} from '../utils/math';
+import { getDistance, getPathLength, getPolygonArea, getPolygonCentroid } from '../utils/math';
 
 // FIXED: Set worker source immediately outside component
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 //  CONSTANTS
-const SNAP_THRESHOLD_PX = 5;
+const SNAP_THRESHOLD_PX = 10;
 
 //  EXTERNAL HELPERS
 const formatArea = (areaSqFt: number) => `${Math.round(areaSqFt * 100) / 100} sq ft`;
@@ -70,21 +71,21 @@ const getPolylineMidpoint = (points: Point[]): Point => {
     if (!points || points.length < 2) return points[0] || { x: 0, y: 0 };
     let totalLength = 0;
     const segmentLengths = [];
-    for(let i = 0; i < points.length - 1; i++) {
-        const d = Math.sqrt(Math.pow(points[i+1].x - points[i].x, 2) + Math.pow(points[i+1].y - points[i].y, 2));
+    for (let i = 0; i < points.length - 1; i++) {
+        const d = Math.sqrt(Math.pow(points[i + 1].x - points[i].x, 2) + Math.pow(points[i + 1].y - points[i].y, 2));
         segmentLengths.push(d);
         totalLength += d;
     }
     let target = totalLength / 2;
-    for(let i = 0; i < segmentLengths.length; i++) {
-        if(target <= segmentLengths[i]) {
+    for (let i = 0; i < segmentLengths.length; i++) {
+        if (target <= segmentLengths[i]) {
             const ratio = target / segmentLengths[i];
-            const p1 = points[i], p2 = points[i+1];
+            const p1 = points[i], p2 = points[i + 1];
             return { x: p1.x + (p2.x - p1.x) * ratio, y: p1.y + (p2.y - p1.y) * ratio };
         }
         target -= segmentLengths[i];
     }
-    return points[Math.floor(points.length/2)];
+    return points[Math.floor(points.length / 2)];
 };
 
 const Canvas = () => {
@@ -94,7 +95,8 @@ const Canvas = () => {
         setScale, setIsCalibrating, setPageIndex, zoom, pan, setViewport, setTool, scale,
         commitHistory, undo, redo, groupColors, setGroupColor, setGroupVisibility,
         pageScales, setPageScale, setMeasurements, toggleScaleLock,
-        planeBuilderActive, planeBuilderSelectedIds, togglePlaneBuilderLine,
+        selectedRoofPlaneId, selectedRoofEdgeIndex, setSelectedRoofPlaneId, setSelectedRoofEdgeIndex,
+        activeWizardStep, setWizardStep
     } = useStore();
 
     const [points, setPoints] = useState<Point[]>([]);
@@ -137,7 +139,7 @@ const Canvas = () => {
     const isCurrentPageIndependent = pageScales[activePageIndex] !== undefined;
 
     const selectedMeasurementData = useMemo(() =>
-            measurements.find(m => m.id === selectedShape),
+        measurements.find(m => m.id === selectedShape),
         [measurements, selectedShape]
     );
 
@@ -171,7 +173,7 @@ const Canvas = () => {
                 const dist = Math.sqrt(Math.pow(p.x - x, 2) + Math.pow(p.y - y, 2));
                 if (dist < minDistance) {
                     minDistance = dist;
-                    closest = { x: p.x, y: p.y };
+                    closest = { x: p.x, y: p.y, nodeId: p.nodeId };
                 }
             });
         });
@@ -189,15 +191,6 @@ const Canvas = () => {
         return inside;
     };
 
-    const createDefaultSquare = (center: Point) => {
-        const size = 100 / zoom;
-        return [
-            { x: center.x - size / 2, y: center.y - size / 2 },
-            { x: center.x + size / 2, y: center.y - size / 2 },
-            { x: center.x + size / 2, y: center.y + size / 2 },
-            { x: center.x - size / 2, y: center.y + size / 2 }
-        ];
-    };
 
     //  HANDLERS
 
@@ -300,7 +293,7 @@ const Canvas = () => {
     //  GRAPH OPS
     const handleGraphDeletePoint = (mId: string, pIdx: number) => {
         const m = measurements.find(meas => meas.id === mId);
-        if(!m) return;
+        if (!m) return;
         const isGraph = m.points.some(p => p.connectsTo && p.connectsTo.length > 0);
         if (!isGraph) { deletePoint(mId, pIdx); return; }
         const newPoints = m.points.filter((_, idx) => idx !== pIdx).map(p => {
@@ -327,7 +320,7 @@ const Canvas = () => {
         const newPoints = [...m.points];
         const targetPoint = newPoints[targetIdx];
         const sourcePoint = newPoints[sourceIdx];
-        const cp = { x: (sourcePoint.x + targetPoint.x) / 2, y: (sourcePoint.y + targetPoint.y) / 2 - 20/zoom };
+        const cp = { x: (sourcePoint.x + targetPoint.x) / 2, y: (sourcePoint.y + targetPoint.y) / 2 - 20 / zoom };
         newPoints[targetIdx] = { ...targetPoint, controlPoint: cp };
         updateMeasurement(mId, { points: newPoints });
         commitHistory();
@@ -347,7 +340,7 @@ const Canvas = () => {
                     redo();
                 }
             } else {
-                switch(e.key.toLowerCase()) {
+                switch (e.key.toLowerCase()) {
                     case 'l': setTool('line'); break;
                     case 's': setTool('shape'); break;
                     case 'm': setTool('measure'); break;
@@ -457,7 +450,7 @@ const Canvas = () => {
             if (dx > dy) y = last.y; else x = last.x;
         }
 
-        if (activeTool === 'measure' || activeTool === 'line' || branchingFrom) setCurrentMousePos({ x, y });
+        if (activeTool === 'measure' || activeTool === 'line' || activeTool === 'shape' || branchingFrom) setCurrentMousePos({ x, y });
 
         if (draggedVertex) {
             const m = measurements.find(m => m.id === draggedVertex.mId);
@@ -502,8 +495,16 @@ const Canvas = () => {
 
         if (e.button === 0 && !contextMenu && !draggedVertex && !edgeContextMenu) {
             let { x, y } = screenToPdf(e.clientX, e.clientY);
-            if (snapPoint && !e.ctrlKey) { x = snapPoint.x; y = snapPoint.y; }
-            else if (e.shiftKey && points.length > 0) {
+            let snappedNodeId: string | undefined = undefined;
+
+            if (!e.ctrlKey) {
+                const target = findSnapTarget(x, y);
+                if (target) {
+                    x = target.x; y = target.y; snappedNodeId = target.nodeId;
+                }
+            }
+
+            if (!snappedNodeId && e.shiftKey && points.length > 0) {
                 const last = points[points.length - 1];
                 const dx = Math.abs(x - last.x); const dy = Math.abs(y - last.y);
                 if (dx > dy) y = last.y; else x = last.x;
@@ -513,7 +514,7 @@ const Canvas = () => {
                 const m = measurements.find(meas => meas.id === branchingFrom.id);
                 if (m) {
                     const newPointIndex = m.points.length;
-                    const newPoint: Point = { x, y, connectsTo: [] };
+                    const newPoint: Point = { x, y, connectsTo: [], nodeId: snappedNodeId || uuidv4() };
                     const newPoints = [...m.points, newPoint];
                     const parentPoint = newPoints[branchingFrom.pIdx];
                     const existingConnections = parentPoint.connectsTo || [];
@@ -536,20 +537,45 @@ const Canvas = () => {
                 return;
             }
 
+            // In Roof Wizard shape-first mode, we draw clicking points to form a polygon.
             if (activeTool === 'shape') {
-                const squarePoints = createDefaultSquare({ x, y });
-                const finalName = activeWizardTool || 'Shape';
-                addMeasurement('shape', squarePoints, finalName);
-                setTimeout(() => {
-                    const newShape = measurements[measurements.length - 1];
-                    if (newShape) { setSelectedShape(newShape.id); setIsPropertiesPanelOpen(true); }
-                }, 0);
+                const newPoint: Point = { x, y, connectsTo: [], nodeId: snappedNodeId || uuidv4() };
+
+                // If we click near the FIRST point of our current drawing (and we have at least 3 points), CLOSE the shape!
+                if (points.length >= 2) {
+                    const firstPoint = points[0];
+                    const distance = Math.sqrt(Math.pow(x - firstPoint.x, 2) + Math.pow(y - firstPoint.y, 2));
+                    const threshold = 15 / zoom;
+                    if (distance < threshold) {
+                        const finalName = activeWizardTool || 'Shape';
+                        addMeasurement('shape', points, finalName);
+                        setPoints([]);
+                        // Auto-select if requested
+                        if (!activeWizardTool) {
+                            setTimeout(() => {
+                                const newShape = measurements[measurements.length - 1];
+                                if (newShape) { setSelectedShape(newShape.id); setIsPropertiesPanelOpen(true); }
+                            }, 0);
+                        }
+                        return;
+                    }
+                }
+
+                // Otherwise just add to points
+                let updatedPoints = [...points, newPoint];
+                if (points.length > 0) {
+                    const lastIndex = points.length - 1;
+                    const newIndex = points.length;
+                    updatedPoints[lastIndex] = { ...updatedPoints[lastIndex], connectsTo: [...(updatedPoints[lastIndex].connectsTo || []), newIndex] };
+                }
+                setPoints(updatedPoints);
                 return;
             }
 
             if (activeTool === 'measure') {
-                if (points.length >= 1) setPoints([{ x, y }]);
-                else setPoints([{ x, y }]);
+                const newPoint: Point = { x, y, connectsTo: [], nodeId: snappedNodeId || uuidv4() };
+                if (points.length >= 1) setPoints([newPoint]);
+                else setPoints([newPoint]);
                 return;
             }
 
@@ -572,7 +598,7 @@ const Canvas = () => {
                 }
             }
 
-            const newPoint: Point = { x, y, connectsTo: [] };
+            const newPoint: Point = { x, y, connectsTo: [], nodeId: snappedNodeId || uuidv4() };
             let updatedPoints = [...points, newPoint];
             if (points.length > 0) {
                 const lastIndex = points.length - 1;
@@ -684,10 +710,21 @@ const Canvas = () => {
                         className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-medium transition-colors ${isScaleLocked
                             ? 'bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300'
                             : (isCalibrating ? 'bg-yellow-100 text-yellow-700 border border-yellow-200 animate-pulse' : 'bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200')
-                        }`}
+                            }`}
                     >
                         <Ruler size={14} />
                         {isCalibrating ? 'Calibrating...' : 'Calibrate'}
+                    </button>
+
+                    <button
+                        onClick={() => setWizardStep(activeWizardStep === 'none' ? 'roof' : 'none')}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-bold shadow-sm transition-colors ${activeWizardStep !== 'none'
+                            ? 'bg-blue-600 text-white hover:bg-blue-700'
+                            : 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100'
+                            }`}
+                    >
+                        <Calculator size={14} />
+                        Roof Wizard
                     </button>
 
                     <button
@@ -907,13 +944,13 @@ const Canvas = () => {
                                                         })()}
                                                         stroke={(() => {
                                                             if (m.roofPlaneIndex) {
-                                                                const planeStrokes = ['#6366f1','#22c55e','#f97316','#a855f7','#0ea5e9','#ec4899','#eab308','#14b8a6'];
+                                                                const planeStrokes = ['#6366f1', '#22c55e', '#f97316', '#a855f7', '#0ea5e9', '#ec4899', '#eab308', '#14b8a6'];
                                                                 return selectedShape === m.id ? '#3b82f6' : planeStrokes[(m.roofPlaneIndex - 1) % planeStrokes.length];
                                                             }
                                                             return selectedShape === m.id ? "#3b82f6" : color;
                                                         })()}
                                                         strokeWidth={Math.max(1, (selectedShape === m.id ? 3 : 2) / zoom)}
-                                                        strokeDasharray={m.roofPlaneIndex ? `${8/zoom} ${4/zoom}` : undefined}
+                                                        strokeDasharray={m.roofPlaneIndex ? `${8 / zoom} ${4 / zoom}` : undefined}
                                                         vectorEffect="non-scaling-stroke"
                                                         className="cursor-pointer"
                                                         onClick={(e) => {
@@ -921,12 +958,61 @@ const Canvas = () => {
                                                             if (activeTool === 'select') setSelectedShape(m.id);
                                                         }}
                                                     />
+
+                                                    {m.points.map((p, idx) => {
+                                                        const nextP = m.points[(idx + 1) % m.points.length];
+                                                        const edgeType = m.edgeTypes ? m.edgeTypes[idx] : 'none';
+                                                        const isSelectedEdge = selectedRoofPlaneId === m.id && selectedRoofEdgeIndex === idx;
+
+                                                        // For roofs, we always render a thick invisible stroke for hit testing, 
+                                                        // and a visible stroke if it has a type or is selected
+                                                        const strokeColor = isSelectedEdge ? "#3b82f6" : (edgeType && edgeType !== 'none' ? ROOF_LINE_COLORS[edgeType] : "transparent");
+                                                        const strokeWidth = isSelectedEdge ? Math.max(8, 12 / zoom) : Math.max(4, 8 / zoom);
+
+                                                        return (
+                                                            <g key={`edge-group-${idx}`}>
+                                                                {/* Invisible fat stroke for easier clicking */}
+                                                                <line
+                                                                    x1={p.x} y1={p.y}
+                                                                    x2={nextP.x} y2={nextP.y}
+                                                                    stroke="transparent"
+                                                                    strokeWidth={Math.max(5, 10 / zoom)}
+                                                                    className="cursor-pointer"
+                                                                    onMouseDown={(e) => {
+                                                                        if (activeWizardStep === 'roof' && activeTool === 'select') {
+                                                                            e.preventDefault();
+                                                                            e.stopPropagation();
+                                                                            setSelectedRoofPlaneId(m.id);
+                                                                            setSelectedRoofEdgeIndex(idx);
+                                                                        } else {
+                                                                            handleEdgeMouseDown(e, m.id, idx);
+                                                                        }
+                                                                    }}
+                                                                    onContextMenu={(e) => {
+                                                                        if (!(activeWizardStep === 'roof' && activeTool === 'select')) {
+                                                                            handleEdgeRightClick(e, m.id, idx);
+                                                                        }
+                                                                    }}
+                                                                />
+                                                                {/* Visible styled stroke */}
+                                                                <line
+                                                                    x1={p.x} y1={p.y}
+                                                                    x2={nextP.x} y2={nextP.y}
+                                                                    stroke={strokeColor}
+                                                                    strokeWidth={strokeWidth}
+                                                                    className="pointer-events-none"
+                                                                    vectorEffect="non-scaling-stroke"
+                                                                />
+                                                            </g>
+                                                        );
+                                                    })}
+
                                                     {/* Roof plane index label at centroid */}
                                                     {m.roofPlaneIndex && (
                                                         <text
                                                             x={labelPos.x} y={labelPos.y - (fontSize * 1.4)}
                                                             textAnchor="middle" dominantBaseline="middle"
-                                                            fill={['#6366f1','#22c55e','#f97316','#a855f7','#0ea5e9','#ec4899','#eab308','#14b8a6'][(m.roofPlaneIndex - 1) % 8]}
+                                                            fill={['#6366f1', '#22c55e', '#f97316', '#a855f7', '#0ea5e9', '#ec4899', '#eab308', '#14b8a6'][(m.roofPlaneIndex - 1) % 8]}
                                                             fontSize={fontSize * 1.2} fontWeight="bold"
                                                             pointerEvents="none"
                                                             style={{ textShadow: '0px 0px 3px white, 0px 0px 6px white' }}
@@ -935,58 +1021,54 @@ const Canvas = () => {
                                                         </text>
                                                     )}
 
-                                                    {m.points.map((p, idx) => {
-                                                        const nextP = m.points[(idx + 1) % m.points.length];
+                                                    {/* Render slope direction arrow if present */}
+                                                    {m.slopeDirection && m.slopeDirection.length === 2 && (() => {
+                                                        const p1 = m.slopeDirection[0];
+                                                        const p2 = m.slopeDirection[1];
+
+                                                        // Calculate arrowhead points
+                                                        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                                                        const headLen = 15 / zoom;
+                                                        const arrowPoint1 = {
+                                                            x: p2.x - headLen * Math.cos(angle - Math.PI / 6),
+                                                            y: p2.y - headLen * Math.sin(angle - Math.PI / 6)
+                                                        };
+                                                        const arrowPoint2 = {
+                                                            x: p2.x - headLen * Math.cos(angle + Math.PI / 6),
+                                                            y: p2.y - headLen * Math.sin(angle + Math.PI / 6)
+                                                        };
+
                                                         return (
-                                                            <line
-                                                                key={`edge-${idx}`}
-                                                                x1={p.x} y1={p.y}
-                                                                x2={nextP.x} y2={nextP.y}
-                                                                stroke="transparent"
-                                                                strokeWidth={Math.max(8, 12 / zoom)}
-                                                                className="cursor-pointer"
-                                                                onMouseDown={(e) => handleEdgeMouseDown(e, m.id, idx)}
-                                                                onContextMenu={(e) => handleEdgeRightClick(e, m.id, idx)}
-                                                                vectorEffect="non-scaling-stroke"
-                                                                style={{ pointerEvents: 'all' }}
-                                                            />
+                                                            <g className="pointer-events-none">
+                                                                <line
+                                                                    x1={p1.x} y1={p1.y}
+                                                                    x2={p2.x} y2={p2.y}
+                                                                    stroke="#eab308"
+                                                                    strokeWidth={Math.max(2, 4 / zoom)}
+                                                                    strokeDasharray={`${6 / zoom},${6 / zoom}`}
+                                                                />
+                                                                {/* Arrow Base */}
+                                                                <circle cx={p1.x} cy={p1.y} r={4 / zoom} fill="#eab308" />
+                                                                {/* Arrow Head */}
+                                                                <polygon
+                                                                    points={`${p2.x},${p2.y} ${arrowPoint1.x},${arrowPoint1.y} ${arrowPoint2.x},${arrowPoint2.y}`}
+                                                                    fill="#eab308"
+                                                                />
+                                                            </g>
                                                         );
-                                                    })}
+                                                    })()}
                                                 </>
                                             ) : (
                                                 <>
-                                                    {/* Selection highlight glow for plane building */}
-                                                    {m.roofLineType && planeBuilderActive && planeBuilderSelectedIds.includes(m.id) && (
-                                                        <path
-                                                            d={generateLinePath(m.points)}
-                                                            fill="none"
-                                                            stroke="#6366f1"
-                                                            strokeWidth={Math.max(6, 10 / zoom)}
-                                                            strokeOpacity={0.4}
-                                                            vectorEffect="non-scaling-stroke"
-                                                            pointerEvents="none"
-                                                        />
-                                                    )}
                                                     <path
                                                         d={generateLinePath(m.points)}
                                                         fill="none"
-                                                        stroke={
-                                                            planeBuilderActive && planeBuilderSelectedIds.includes(m.id)
-                                                                ? "#6366f1"
-                                                                : selectedShape === m.id
-                                                                    ? "#3b82f6"
-                                                                    : (m.roofLineType ? ROOF_LINE_COLORS[m.roofLineType] || "#ef4444" : "#ef4444")
-                                                        }
-                                                        strokeWidth={Math.max(1, (selectedShape === m.id || (planeBuilderActive && planeBuilderSelectedIds.includes(m.id)) ? 4 : 3) / zoom)}
+                                                        stroke={selectedShape === m.id ? "#3b82f6" : (m.roofLineType ? ROOF_LINE_COLORS[m.roofLineType] || "#ef4444" : "#ef4444")}
+                                                        strokeWidth={Math.max(1, (selectedShape === m.id ? 4 : 3) / zoom)}
                                                         vectorEffect="non-scaling-stroke"
                                                         className="cursor-pointer"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            // If in line-selection mode and this is a roof line, toggle selection
-                                                            if (planeBuilderActive && m.roofLineType) {
-                                                                togglePlaneBuilderLine(m.id);
-                                                                return;
-                                                            }
                                                             if (activeTool === 'select') setSelectedShape(m.id);
                                                         }}
                                                     />
@@ -1037,23 +1119,46 @@ const Canvas = () => {
                                             )}
 
                                             {m.points.map((p, idx) => (
-                                                <circle
-                                                    key={idx}
-                                                    cx={p.x}
-                                                    cy={p.y}
-                                                    r={Math.max(1.5, 2.5 / zoom)}
-                                                    fill="white"
-                                                    stroke="black"
-                                                    strokeWidth={Math.max(0.25, 0.5 / zoom)}
-                                                    className="cursor-move hover:fill-yellow-400"
-                                                    onContextMenu={(e) => handlePointRightClick(e, m.id, idx)}
-                                                    onMouseDown={(e) => {
-                                                        e.stopPropagation();
-                                                        e.preventDefault();
-                                                        setDraggedVertex({ mId: m.id, pIdx: idx });
-                                                    }}
-                                                    vectorEffect="non-scaling-stroke"
-                                                />
+                                                <g key={`vertex-${idx}`}>
+                                                    {/* Invisible larger hit area for easier clicking */}
+                                                    <circle
+                                                        cx={p.x} cy={p.y} r={(activeWizardStep === 'roof' && activeTool === 'shape') ? 15 / zoom : Math.max(4, 6 / zoom)} fill="transparent"
+                                                        className="cursor-pointer"
+                                                        onContextMenu={(e) => handlePointRightClick(e, m.id, idx)}
+                                                        onMouseDown={(e) => {
+                                                            if (e.button === 2) return; // Right click handled by onContextMenu
+                                                            e.stopPropagation(); e.preventDefault();
+                                                            if (activeWizardStep === 'roof' && activeTool === 'shape') {
+                                                                let updatedPoints = [...points];
+                                                                if (points.length >= 2 && p.nodeId === points[0].nodeId) {
+                                                                    addMeasurement('shape', points, activeWizardTool || 'Shape');
+                                                                    setPoints([]);
+                                                                    return;
+                                                                }
+                                                                const newPoint: Point = { x: p.x, y: p.y, connectsTo: [], nodeId: p.nodeId || uuidv4() };
+                                                                updatedPoints.push(newPoint);
+                                                                if (points.length > 0) {
+                                                                    const lastIndex = points.length - 1;
+                                                                    updatedPoints[lastIndex] = { ...updatedPoints[lastIndex], connectsTo: [...(updatedPoints[lastIndex].connectsTo || []), updatedPoints.length - 1] };
+                                                                }
+                                                                setPoints(updatedPoints);
+                                                            } else {
+                                                                setDraggedVertex({ mId: m.id, pIdx: idx });
+                                                            }
+                                                        }}
+                                                    />
+                                                    {/* Visible dot */}
+                                                    <circle
+                                                        cx={p.x}
+                                                        cy={p.y}
+                                                        r={Math.max(1.5, 2.5 / zoom)}
+                                                        fill="white"
+                                                        stroke="black"
+                                                        strokeWidth={Math.max(0.25, 0.5 / zoom)}
+                                                        className="pointer-events-none hover:fill-yellow-400"
+                                                        vectorEffect="non-scaling-stroke"
+                                                    />
+                                                </g>
                                             ))}
 
                                             {/* LABELS */}
@@ -1069,7 +1174,7 @@ const Canvas = () => {
                                                         </text>
                                                     )}
                                                     {m.labels?.showTotalLength && (
-                                                        <text x={labelPos.x} y={m.type === 'shape' && m.labels.showArea ? labelPos.y - (fontSize * 0.7) : labelPos.y - (m.type === 'line' ? 10/zoom : 0)} textAnchor="middle" dominantBaseline="middle" fill="blue" fontSize={fontSize * 1.1} fontWeight="bold">
+                                                        <text x={labelPos.x} y={m.type === 'shape' && m.labels.showArea ? labelPos.y - (fontSize * 0.7) : labelPos.y - (m.type === 'line' ? 10 / zoom : 0)} textAnchor="middle" dominantBaseline="middle" fill="blue" fontSize={fontSize * 1.1} fontWeight="bold">
                                                             {(() => {
                                                                 const len = getPathLength([...m.points, (m.type === 'shape' ? m.points[0] : null)].filter(Boolean) as Point[]) / effectiveScale;
                                                                 const feet = Math.floor(len);
@@ -1149,7 +1254,20 @@ const Canvas = () => {
                                     </g>
                                 )}
 
-                                {(activeTool === 'measure' || activeTool === 'line' || branchingFrom) && currentMousePos && (
+                                {snapPoint && !isPanning && (
+                                    <circle
+                                        cx={snapPoint.x}
+                                        cy={snapPoint.y}
+                                        r={6 / zoom}
+                                        fill="transparent"
+                                        stroke="#facc15"
+                                        strokeWidth={3 / zoom}
+                                        className="pointer-events-none"
+                                        vectorEffect="non-scaling-stroke"
+                                    />
+                                )}
+
+                                {(activeTool === 'measure' || activeTool === 'line' || activeTool === 'shape' || branchingFrom) && currentMousePos && (
                                     <g pointerEvents="none">
                                         {branchingFrom && (
                                             (() => {

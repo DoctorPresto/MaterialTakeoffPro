@@ -64,8 +64,7 @@ const DataTab = () => {
                     {/* BASIC DATA: FOUNDATION */}
                     <div className="bg-white p-6 rounded-lg shadow-sm border group hover:border-blue-300 transition-colors">
                         <div className="flex justify-between items-center border-b pb-2 mb-4">
-                            <h2 className="text-lg font-bold text-gray-700">1. Foundation Data</h2>
-                            <span className="text-xs text-gray-400">Use Wizard to trace</span>
+                            <h2 className="text-lg font-bold text-gray-700">Foundation Data</h2>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="col-span-2 md:col-span-2">
@@ -97,7 +96,7 @@ const DataTab = () => {
 
                     {/* BASIC DATA: FRAMING */}
                     <div className="bg-white p-6 rounded-lg shadow-sm border group hover:border-blue-300 transition-colors">
-                        <h2 className="text-lg font-bold mb-4 border-b pb-2 text-gray-700">2. Main Floor & Framing</h2>
+                        <h2 className="text-lg font-bold mb-4 border-b pb-2 text-gray-700">Framing Data</h2>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 mb-1">Perimeter (LF)</label>
@@ -149,22 +148,9 @@ const DataTab = () => {
                     {/* BASIC DATA: ROOF */}
                     <div className="bg-white p-6 rounded-lg shadow-sm border group hover:border-blue-300 transition-colors">
                         <div className="flex justify-between items-center border-b pb-2 mb-4">
-                            <h2 className="text-lg font-bold text-gray-700">3. Roof System (Line Method)</h2>
-                            <span className="text-xs text-gray-400">Use Wizard to trace</span>
+                            <h2 className="text-lg font-bold text-gray-700">Roof Data</h2>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1">Primary Pitch (x/12)</label>
-                                <input type="number" className="w-full border p-2 rounded text-sm font-bold text-blue-600"
-                                       value={buildingData.roofPitch}
-                                       onChange={e => updateBuildingData({roofPitch: parseFloat(e.target.value) || 0})}/>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1">Number of Pitches</label>
-                                <input type="number" className="w-full border p-2 rounded text-sm"
-                                       value={buildingData.numPitches}
-                                       onChange={e => updateBuildingData({numPitches: parseFloat(e.target.value) || 0})}/>
-                            </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 mb-1">Ridge Length (LF)</label>
                                 <input type="number" className="w-full border p-2 rounded text-sm"

@@ -1,6 +1,7 @@
 export type Point = {
     x: number;
     y: number;
+    nodeId?: string;
     connectsTo?: number[];
     controlPoint?: { x: number; y: number };
 };
@@ -37,6 +38,8 @@ export interface Measurement {
     // Roof Plane properties
     roofPlaneIndex?: number;  // 1-based index for roof plane shapes
     roofPlaneShape?: 'rectangle' | 'triangle' | 'trapezoid' | 'custom';  // original shape type
+    edgeTypes?: string[];     // Array of assigned line types for edges ('hip', 'valley', 'ridge', 'eave', 'gable')
+    slopeDirection?: Point[]; // Two points defining the UP direction arrow (e.g. from eave to ridge)
 }
 
 export interface MaterialVariant {
