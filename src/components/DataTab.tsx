@@ -30,7 +30,7 @@ const DataTab = () => {
                         onClick={() => setWizardStep('roof')}
                         className="flex items-center gap-2 bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700 font-bold shadow-sm transition-all"
                     >
-                        <Calculator size={16}/> Start Wizard
+                        <Calculator size={16}/> Roof Wizard
                     </button>
                     <label className="flex items-center gap-2 cursor-pointer bg-blue-50 text-blue-700 px-3 py-1.5 rounded text-sm hover:bg-blue-100 font-medium transition-all">
                         <Upload size={16}/> <span>Load PDF</span>
@@ -65,6 +65,12 @@ const DataTab = () => {
                     <div className="bg-white p-6 rounded-lg shadow-sm border group hover:border-blue-300 transition-colors">
                         <div className="flex justify-between items-center border-b pb-2 mb-4">
                             <h2 className="text-lg font-bold text-gray-700">Foundation Data</h2>
+                            <button
+                                onClick={() => setWizardStep('foundation')}
+                                className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700 font-bold shadow-sm transition-all"
+                            >
+                                <Calculator size={14}/> Foundation Wizard
+                            </button>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="col-span-2 md:col-span-2">

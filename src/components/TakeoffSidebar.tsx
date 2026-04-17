@@ -113,7 +113,6 @@ const CollapsibleItemSet = ({
             }
         });
 
-        // Roof totals from building data
         const roofItems = [
             { id: 'roof-roofHipLength', name: 'Total Hip Length', secondaryText: 'feet' },
             { id: 'roof-roofRidgeLength', name: 'Total Ridge Length', secondaryText: 'feet' },
@@ -124,6 +123,15 @@ const CollapsibleItemSet = ({
             { id: 'roof-roofTotalTrueArea', name: 'Roof Total True Area', secondaryText: 'sq ft' },
         ];
         roofItems.forEach(r => items.push({ ...r, category: 'Roof Totals' }));
+
+        // Foundation totals from building data
+        const foundationItems = [
+            { id: 'foundation-foundationPerimeter', name: 'Total Foundation Perimeter', secondaryText: 'feet' },
+            { id: 'foundation-foundationCorners', name: 'Total Foundation Corners', secondaryText: 'count' },
+            { id: 'foundation-foundationTees', name: 'Total Foundation T-Intersections', secondaryText: 'count' },
+            { id: 'foundation-foundationStraightBlocksPerCourse', name: 'Straight Blocks / Course', secondaryText: 'count' }
+        ];
+        foundationItems.forEach(f => items.push({ ...f, category: 'Foundation Totals' }));
 
         return items;
     }, [measurements]);
@@ -339,8 +347,8 @@ const CollapsibleItemSet = ({
                                                                             onChange={(id) => {
                                                                                 if (id === 'manual') {
                                                                                     onUpdateVar(inst.id, v.id, { type: 'manual', value: 0 });
-                                                                                } else if (id.startsWith('roof-')) {
-                                                                                    const field = id.replace('roof-', '');
+                                                                                } else if (id.startsWith('roof-') || id.startsWith('foundation-')) {
+                                                                                    const field = id.substring(id.indexOf('-') + 1);
                                                                                     onUpdateVar(inst.id, v.id, { type: 'buildingData', field });
                                                                                 } else if (id.startsWith('group-')) {
                                                                                     const groupId = id.replace('group-', '');

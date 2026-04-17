@@ -21,7 +21,7 @@ const App = () => {
     if (!estimateName) return <Dashboard/>;
 
     return (
-        <div className="h-screen w-screen flex flex-col overflow-hidden font-sans text-gray-800 bg-gray-100 max-w-full">
+        <div className="h-screen w-screen flex flex-col overflow-hidden font-sans text-gray-800 bg-gray-100 max-w-full print:h-auto print:overflow-visible">
             <div className="h-14 bg-gray-900 text-white flex items-center px-4 justify-between shrink-0 shadow-md z-50">
                 <div className="flex items-center gap-6">
                     <div className="font-bold text-xl tracking-tight">Takeoff<span className="text-blue-400">PRO</span>
@@ -52,7 +52,7 @@ const App = () => {
                     </button>
                 </div>
             </div>
-            <div className="flex-1 flex overflow-hidden relative w-full">
+            <div className="flex-1 flex overflow-hidden relative w-full print:overflow-visible print:block">
                 {activeTab === 'data' && <DataTab/>}
                 {activeTab === 'measure' && <Canvas/>}
                 {activeTab === 'materials' && <MaterialsTab/>}

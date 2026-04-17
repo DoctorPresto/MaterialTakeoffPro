@@ -1,5 +1,8 @@
 import {create} from 'zustand';
 import {persist} from 'zustand/middleware';
+import { createJSONStorage } from 'zustand/middleware';
+import { get, set as setIDB, del } from 'idb-keyval';
+import JSZip from 'jszip';
 import {v4 as uuidv4} from 'uuid';
 import {
     AssemblyDef, AssemblyNode, AssemblyVariable, BuildingData, EstimateFile, ItemSet, ManualItem, MaterialDef, Measurement,
@@ -20,10 +23,14 @@ const generateUniqueName = (baseName: string, existingNames: string[]): string =
 };
 
 const recalculateRoofData = (measurements: Measurement[], scale: number, pageScales: Record<number, number>): Partial<BuildingData> => {
-    let roofRidgeLength = 0, roofHipLength = 0, roofEaveLength = 0, roofGableLength = 0, valleyLength = 0;
-    
-    // Set to track processed shared edge keys (NodeA_NodeB) to avoid double-counting
-    const processedEdgeKeys = new Set<string>();
+    let roofRidgeLength = 0, roofHipLength = 0, roofEaveLength = 0, roofGableLength = 0, valleyLength = 0, roofWallLength = 0, roofTransitionLength = 0;
+
+    // ─── Pass 1: Collect all edges ─────────────────────────────────
+    // For shared edges (hip/valley/ridge), we track them by nodeId pair
+    // and resolve to the max pitch of the two adjacent planes.
+    interface EdgeEntry { type: string; rawLength: number; pitch: number; }
+    const sharedEdges = new Map<string, EdgeEntry>();  // edgeKey → entry (max pitch wins)
+    const soloEdges: EdgeEntry[] = [];                 // eaves, gables, and edges without nodeIds
 
     measurements.forEach(m => {
         // Legacy standalone lines
@@ -31,13 +38,7 @@ const recalculateRoofData = (measurements: Measurement[], scale: number, pageSca
             const effectiveScale = pageScales[m.pageIndex] || scale;
             const rawLength = getPathLength(m.points) / effectiveScale;
             const pitch = m.pitch || 4;
-            switch (m.roofLineType) {
-                case 'ridge': roofRidgeLength += rawLength; break;
-                case 'eave': roofEaveLength += rawLength; break;
-                case 'gable': roofGableLength += rawLength * getSlopeMultiplier(pitch); break;
-                case 'hip': roofHipLength += rawLength * getPlanHipToTrueHipMultiplier(pitch); break;
-                case 'valley': valleyLength += rawLength * getPlanHipToTrueHipMultiplier(pitch); break;
-            }
+            soloEdges.push({ type: m.roofLineType, rawLength, pitch });
         }
         
         // Shape-first planes with classified edges
@@ -52,32 +53,139 @@ const recalculateRoofData = (measurements: Measurement[], scale: number, pageSca
                 const p1 = m.points[i];
                 const p2 = m.points[(i + 1) % m.points.length];
                 
-                // Deduplication logic for shared edges (Hips, Valleys, Ridges)
-                if ((type === 'hip' || type === 'valley' || type === 'ridge') && p1.nodeId && p2.nodeId) {
-                    const edgeKey = [p1.nodeId, p2.nodeId].sort().join('_');
-                    if (processedEdgeKeys.has(edgeKey)) {
-                        continue; // Already counted this physical edge from an adjacent plane
-                    }
-                    processedEdgeKeys.add(edgeKey);
-                }
-
-                // Calculate segment length
                 const dx = p2.x - p1.x;
                 const dy = p2.y - p1.y;
                 const rawLength = Math.sqrt(dx * dx + dy * dy) / effectiveScale;
 
-                switch (type) {
-                    case 'ridge': roofRidgeLength += rawLength; break;
-                    case 'eave': roofEaveLength += rawLength; break;
-                    case 'gable': roofGableLength += rawLength * getSlopeMultiplier(pitch); break;
-                    case 'hip': roofHipLength += rawLength * getPlanHipToTrueHipMultiplier(pitch); break;
-                    case 'valley': valleyLength += rawLength * getPlanHipToTrueHipMultiplier(pitch); break;
+                // Shared edges (hip/valley/ridge) with nodeIds → deduplicate with max pitch
+                if ((type === 'hip' || type === 'valley' || type === 'ridge') && p1.nodeId && p2.nodeId) {
+                    const edgeKey = [p1.nodeId, p2.nodeId].sort().join('_');
+                    const existing = sharedEdges.get(edgeKey);
+                    if (existing) {
+                        // Second encounter: upgrade to max pitch
+                        existing.pitch = Math.max(existing.pitch, pitch);
+                    } else {
+                        sharedEdges.set(edgeKey, { type, rawLength, pitch });
+                    }
+                } else {
+                    // Eaves, gables, or edges without nodeIds go straight through
+                    soloEdges.push({ type, rawLength, pitch });
                 }
             }
         }
     });
+
+    // ─── Pass 2: Apply multipliers ─────────────────────────────────
+    const applyEdge = (edge: EdgeEntry) => {
+        switch (edge.type) {
+            case 'ridge': roofRidgeLength += edge.rawLength; break;
+            case 'eave':  roofEaveLength  += edge.rawLength; break;
+            case 'gable': roofGableLength += edge.rawLength * getSlopeMultiplier(edge.pitch); break;
+            case 'hip':   roofHipLength   += edge.rawLength * getPlanHipToTrueHipMultiplier(edge.pitch); break;
+            case 'valley': valleyLength   += edge.rawLength * getPlanHipToTrueHipMultiplier(edge.pitch); break;
+            case 'wall':   roofWallLength += edge.rawLength * getSlopeMultiplier(edge.pitch); break; // Apply slope multiplier to be safe
+            case 'transition': roofTransitionLength += edge.rawLength; break; // usually horizontal, but could be sloped
+        }
+    };
+
+    sharedEdges.forEach(edge => applyEdge(edge));
+    soloEdges.forEach(edge => applyEdge(edge));
     
-    return { roofRidgeLength, roofHipLength, roofEaveLength, roofGableLength, valleyLength };
+    return { roofRidgeLength, roofHipLength, roofEaveLength, roofGableLength, valleyLength, roofWallLength, roofTransitionLength };
+};
+
+export const recalculateFoundationData = (
+    measurements: Measurement[],
+    scale: number,
+    pageScales: Record<number, number>
+): Partial<BuildingData> => {
+    let foundationPerimeter = 0;
+    const nodeConnections = new Map<string, number>();
+    const seenEdges = new Set<string>();
+
+    // Per-section data: length and wallHeight
+    const sections: { length: number; wallHeight: number }[] = [];
+
+    measurements.forEach(m => {
+        if (!m.isFoundation || m.points.length < 2) return;
+        const effectiveScale = pageScales[m.pageIndex] || scale;
+        const wallHeight = m.foundationWallHeight || 8; // default 8ft
+        let sectionLength = 0;
+        
+        for (let i = 0; i < m.points.length; i++) {
+            const p1 = m.points[i];
+            const p2 = m.points[i + 1] || (m.type === 'shape' ? m.points[0] : null);
+            
+            if (!p2) break; // End of an open line
+            
+            const id1 = p1.nodeId || `${Math.round(p1.x*100)},${Math.round(p1.y*100)}`;
+            const id2 = p2.nodeId || `${Math.round(p2.x*100)},${Math.round(p2.y*100)}`;
+            if (id1 === id2) continue; // safety check
+            
+            const edgeSig = [id1, id2].sort().join('::');
+            
+            if (!seenEdges.has(edgeSig)) {
+                seenEdges.add(edgeSig);
+                const rawLength = Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2)) / effectiveScale;
+                sectionLength += rawLength;
+                
+                nodeConnections.set(id1, (nodeConnections.get(id1) || 0) + 1);
+                nodeConnections.set(id2, (nodeConnections.get(id2) || 0) + 1);
+            }
+        }
+
+        foundationPerimeter += sectionLength;
+        sections.push({ length: sectionLength, wallHeight });
+    });
+
+    let foundationCorners = 0;
+    let foundationTees = 0;
+
+    nodeConnections.forEach(connections => {
+        if (connections === 2) foundationCorners++;
+        if (connections === 3) foundationTees++;
+        if (connections >= 4) foundationTees += Math.max(1, connections - 2);
+    });
+
+    // Per-course block calculation (flat, single course)
+    const foundationStraightBlocksPerCourse = Math.max(0, (foundationPerimeter - (6 * foundationCorners) - (4.66 * foundationTees)) / 4);
+
+    // Total blocks across all courses — use a weighted average wall height
+    // For simplicity when sections have different heights, we compute a global average
+    const totalLength = sections.reduce((sum, s) => sum + s.length, 0);
+    const avgWallHeight = totalLength > 0
+        ? sections.reduce((sum, s) => sum + s.length * s.wallHeight, 0) / totalLength
+        : 8;
+    const coursesPerBlock = 16 / 12; // 16 inches per course (exact fraction)
+    const totalCourses = Math.ceil(avgWallHeight / coursesPerBlock);
+    const totalStraightBlocks = foundationStraightBlocksPerCourse * totalCourses;
+    const totalCornerBlocks = foundationCorners * totalCourses;
+    const totalTeeBlocks = foundationTees * totalCourses;
+    const totalBlocks = totalStraightBlocks + totalCornerBlocks + totalTeeBlocks;
+
+    // HV Clips: 1 box per 150 blocks
+    const foundationHVClips = Math.ceil(totalBlocks / 150);
+
+    return { 
+        foundationPerimeter, 
+        foundationCorners, 
+        foundationTees,
+        foundationStraightBlocksPerCourse,
+        foundationHVClips,
+        foundationWallHeight: avgWallHeight
+    };
+};
+
+const idbStorage = {
+    getItem: async (name: string): Promise<string | null> => {
+        return (await get(name)) || null;
+    },
+    setItem: async (name: string, value: string): Promise<void> => {
+        await setIDB(name, value);
+    },
+    removeItem: async (name: string): Promise<void> => {
+        await del(name);
+    },
 };
 
 interface HistoryState {
@@ -92,7 +200,7 @@ interface HistoryState {
 }
 
 // DEFINING WIZARD STEP TYPE
-export type WizardStepType = 'none' | 'roof';
+export type WizardStepType = 'none' | 'roof' | 'foundation';
 
 interface AppState {
     past: HistoryState[];
@@ -124,13 +232,9 @@ interface AppState {
     favoriteItemSets: ItemSet[];
     groupColors: Record<string, string>;
 
-
-
-    // NEW: Global Wizard Step State
     activeWizardStep: WizardStepType;
     setWizardStep: (step: WizardStepType) => void;
 
-    // Phase 5: Shape-First Edge Classification State
     activeRoofMode: 'none' | 'trace' | 'slope' | 'classify';
     setRoofMode: (mode: 'none' | 'trace' | 'slope' | 'classify') => void;
     
@@ -139,6 +243,10 @@ interface AppState {
     
     selectedRoofEdgeIndex: number | null;
     setSelectedRoofEdgeIndex: (index: number | null) => void;
+
+    subtractTargetPlaneId: string | null;
+    setSubtractTargetPlaneId: (id: string | null) => void;
+    addSubtractionToPlane: (planeId: string, polygon: Point[]) => void;
     
     classifySelectedEdge: (type: RoofLineType) => void;
 
@@ -227,10 +335,11 @@ export const useStore = create<AppState>()(
                 icfFoundation: false, foundationPerimeterId: null, foundationAreaId: null, hasGarage: false, garageShapeId: null,
                 roofFlatArea: 0, numPlanes: 0, numPeaks: 0, valleyLength: 0,
                 wasteFactorProfile: 'pro',
-                foundationWallHeight: 8, foundationCorners: 4,
+                foundationWallHeight: 8, foundationCorners: 0, foundationPerimeter: 0, foundationTees: 0, foundationStraightBlocksPerCourse: 0, foundationHVClips: 0, foundationRebar: 0,
                 mainFloorPerimeter: 0, mainFloorGrossWallArea: 0, mainFloorNetWallArea: 0,
                 mainFloorCorners: 4, mainFloorIntersections: 0, mainFloorIntWallLength4: 0, mainFloorIntWallLength6: 0,
-                roofPitch: 4, numPitches: 1, roofRidgeLength: 0, roofHipLength: 0, roofEaveLength: 0, roofGableLength: 0
+                roofPitch: 4, numPitches: 1, roofRidgeLength: 0, roofHipLength: 0, roofEaveLength: 0, roofGableLength: 0,
+                steelCoverageWidth: 36
             },
             scale: 1,
             pageScales: {},
@@ -254,6 +363,7 @@ export const useStore = create<AppState>()(
             activeRoofMode: 'none',
             selectedRoofPlaneId: null,
             selectedRoofEdgeIndex: null,
+            subtractTargetPlaneId: null,
 
             commitHistory: () => set((state) => {
                 const current: HistoryState = {
@@ -318,18 +428,26 @@ export const useStore = create<AppState>()(
                 buildingData: {
                     icfFoundation: false, foundationPerimeterId: null, foundationAreaId: null, hasGarage: false, garageShapeId: null,
                     roofFlatArea: 0, numPlanes: 0, numPeaks: 0, valleyLength: 0,
-                    wasteFactorProfile: 'pro', foundationWallHeight: 8, foundationCorners: 4,
+                    wasteFactorProfile: 'pro', foundationWallHeight: 8, foundationCorners: 0, foundationPerimeter: 0, foundationTees: 0, foundationStraightBlocksPerCourse: 0, foundationHVClips: 0, foundationRebar: 0,
                     mainFloorPerimeter: 0, mainFloorGrossWallArea: 0, mainFloorNetWallArea: 0,
                     mainFloorCorners: 4, mainFloorIntersections: 0, mainFloorIntWallLength4: 0, mainFloorIntWallLength6: 0,
-                    roofPitch: 4, numPitches: 1, roofRidgeLength: 0, roofHipLength: 0, roofEaveLength: 0, roofGableLength: 0
+                    roofPitch: 4, numPitches: 1, roofRidgeLength: 0, roofHipLength: 0, roofEaveLength: 0, roofGableLength: 0,
+                    steelCoverageWidth: 36
                 },
                 scale: 1, pageScales: {}, isScaleLocked: false, activePageIndex: 0, activeMeasurementId: null, measurements: [], itemSets: [], groupColors: {}, zoom: 1, pan: {x: 0, y: 0}, past: [], future: [], activeWizardStep: 'none'
             }),
             closeEstimate: () => set({estimateName: null, past: [], future: [], activeWizardStep: 'none'}),
 
             loadEstimateFromFile: (file) => {
-                const newRecent = {id: uuidv4(), name: file.meta.name, lastOpened: Date.now(), data: file};
-                const loadedSets = file.data.itemSets.map(s => {
+                const meta = file.meta || {};
+                const metaName = meta.name || "Untitled";
+                const lastModified = meta.lastModified || Date.now();
+                const fileData = file.data || {};
+
+                const newRecent = {id: uuidv4(), name: metaName, lastOpened: Date.now(), data: file};
+
+                const rawItemSets = fileData.itemSets || [];
+                const loadedSets = rawItemSets.map(s => {
                     const manualItems = s.manualItems || [];
                     const assemblies = s.assemblies || [];
                     let itemOrder = s.itemOrder || [];
@@ -338,46 +456,99 @@ export const useStore = create<AppState>()(
                     }
                     return { ...s, manualItems, itemOrder };
                 });
+
+                const defaultBuildingData = { icfFoundation: false, foundationPerimeterId: null, foundationAreaId: null, hasGarage: false, garageShapeId: null, roofFlatArea: 0, numPlanes: 0, numPeaks: 0, valleyLength: 0, wasteFactorProfile: 'pro', foundationWallHeight: 8, foundationCorners: 0, foundationPerimeter: 0, foundationTees: 0, foundationStraightBlocksPerCourse: 0, foundationHVClips: 0, foundationRebar: 0, mainFloorPerimeter: 0, mainFloorGrossWallArea: 0, mainFloorNetWallArea: 0, mainFloorCorners: 4, mainFloorIntersections: 0, mainFloorIntWallLength4: 0, mainFloorIntWallLength6: 0, roofPitch: 4, numPitches: 1, roofRidgeLength: 0, roofHipLength: 0, roofEaveLength: 0, roofGableLength: 0, steelCoverageWidth: 36 } as BuildingData;
+                const loadedBuildingData = { ...defaultBuildingData, ...(fileData.buildingData || {}) };
+
                 set(state => ({
-                    estimateName: file.meta.name, projectInfo: file.data.projectInfo, buildingData: file.data.buildingData, lastModified: file.meta.lastModified, scale: file.data.scale, pageScales: file.data.pageScales || {}, measurements: file.data.measurements, itemSets: loadedSets, groupColors: (file.data as any).groupColors || {}, pdfFile: file.data.pdfBase64,
-                    recentFiles: [newRecent, ...state.recentFiles.filter(f => f.name !== file.meta.name)].slice(0, 5), activePageIndex: 0, activeMeasurementId: null, zoom: 1, pan: {x: 0, y: 0}, past: [], future: [], activeWizardStep: 'none'
+                    estimateName: metaName,
+                    projectInfo: fileData.projectInfo || {projectName: "New Project", customerName: "", notes: "", files: []},
+                    buildingData: loadedBuildingData,
+                    lastModified: lastModified,
+                    scale: fileData.scale || 1,
+                    pageScales: fileData.pageScales || {},
+                    measurements: fileData.measurements || [],
+                    itemSets: loadedSets,
+                    groupColors: (fileData as any).groupColors || {},
+                    pdfFile: fileData.pdfBase64 || null,
+                    recentFiles: [newRecent, ...state.recentFiles.filter(f => f.name !== metaName)].slice(0, 5),
+                    activePageIndex: 0,
+                    activeMeasurementId: null,
+                    zoom: 1,
+                    pan: {x: 0, y: 0},
+                    past: [],
+                    future: [],
+                    activeWizardStep: 'none'
                 }));
             },
 
             loadRecent: (id) => { const file = get().recentFiles.find(f => f.id === id); if (file) get().loadEstimateFromFile(file.data); },
-            saveEstimate: () => {
+            saveEstimate: async () => {
                 const s = get();
-                const exportData = { version: "2.0", meta: { name: s.projectInfo.projectName || "Untitled", created: Date.now(), lastModified: Date.now() }, data: { projectInfo: s.projectInfo, buildingData: s.buildingData, scale: s.scale, pageScales: s.pageScales, measurements: s.measurements, itemSets: s.itemSets, groupColors: s.groupColors, pdfBase64: s.pdfFile } };
-                const blob = new Blob([JSON.stringify(exportData)], {type: "application/json"});
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a'); link.href = url; link.download = `${s.projectInfo.projectName.replace(/\s+/g, '_')}.takeoff`;
-                document.body.appendChild(link); link.click(); document.body.removeChild(link);
+                const zip = new JSZip();
+
+                const exportData = {
+                    version: "2.0",
+                    meta: {
+                        name: s.projectInfo.projectName || "Untitled",
+                        created: Date.now(),
+                        lastModified: Date.now()
+                    },
+                    data: {
+                        projectInfo: s.projectInfo,
+                        buildingData: s.buildingData,
+                        scale: s.scale,
+                        pageScales: s.pageScales,
+                        measurements: s.measurements,
+                        itemSets: s.itemSets,
+                        groupColors: s.groupColors
+                    }
+                };
+
+                zip.file("data.json", JSON.stringify(exportData));
+
+                if (s.pdfFile) {
+                    const base64Data = s.pdfFile.includes(',') ? s.pdfFile.split(',')[1] : s.pdfFile;
+                    zip.file("blueprint.pdf", base64Data, { base64: true });
+                }
+
+                const content = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+                const url = URL.createObjectURL(content);
+                const link = document.createElement('a');
+
+                link.href = url;
+                link.download = `${s.projectInfo.projectName.replace(/\s+/g, '_')}.takeoff`;
+                document.body.appendChild(link);
+                link.click();
+
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
             },
 
             updateProjectInfo: (updates) => { get().commitHistory(); set(s => ({projectInfo: {...s.projectInfo, ...updates}})); },
             updateBuildingData: (updates) => { get().commitHistory(); set(s => ({buildingData: {...s.buildingData, ...updates}})); },
             setScale: (scale) => {
                 set({ scale });
-                // Recalculate roof data with new scale
                 const { measurements, pageScales } = get();
                 const roofUpdates = recalculateRoofData(measurements, scale, pageScales);
-                set(s => ({ buildingData: { ...s.buildingData, ...roofUpdates } }));
+                const foundationUpdates = recalculateFoundationData(measurements, scale, pageScales);
+                set(s => ({ buildingData: { ...s.buildingData, ...roofUpdates, ...foundationUpdates } }));
             },
             setPageScale: (pageIndex, scaleVal) => {
                 get().commitHistory();
                 set(s => {
                     const newPageScales = {...s.pageScales};
                     if (scaleVal === undefined) delete newPageScales[pageIndex]; else newPageScales[pageIndex] = scaleVal;
-                    // Recalculate roof data with updated page scales
+                    // Recalculate roof and foundation data with updated page scales
                     const roofUpdates = recalculateRoofData(s.measurements, s.scale, newPageScales);
-                    return { pageScales: newPageScales, buildingData: { ...s.buildingData, ...roofUpdates } };
+                    const foundationUpdates = recalculateFoundationData(s.measurements, s.scale, newPageScales);
+                    return { pageScales: newPageScales, buildingData: { ...s.buildingData, ...roofUpdates, ...foundationUpdates } };
                 });
             },
             toggleScaleLock: () => set(s => ({ isScaleLocked: !s.isScaleLocked })),
             setPageIndex: (index) => set({activePageIndex: Math.max(0, index)}),
             setTool: (activeTool) => set({activeTool, activeWizardTool: null, isCalibrating: false}),
 
-            // Set Wizard Step (Global UI State)
             setWizardStep: (step) => set({ activeWizardStep: step }),
 
             setRoofMode: (mode) => set({ activeRoofMode: mode }),
@@ -408,9 +579,96 @@ export const useStore = create<AppState>()(
                 s.updateBuildingData(newData);
             },
 
+            setSubtractTargetPlaneId: (id) => set({ subtractTargetPlaneId: id }),
+
+            addSubtractionToPlane: (planeId, polygon) => {
+                get().commitHistory();
+                set(s => {
+                    const newMeasurements = s.measurements.map(m => {
+                        if (m.id !== planeId) return m;
+
+                        // 1. Calculate signed area
+                        const getSignedArea = (pts: Point[]) => {
+                            let area = 0;
+                            for (let i = 0; i < pts.length; i++) {
+                                const p1 = pts[i];
+                                const p2 = pts[(i + 1) % pts.length];
+                                area += p1.x * p2.y - p2.x * p1.y;
+                            }
+                            return area;
+                        };
+
+                        const outerArea = getSignedArea(m.points);
+                        let holePts = [...polygon];
+                        const holeArea = getSignedArea(holePts);
+
+                        // If same sign, reverse hole so Shoelace correctly subtracts area
+                        // and SVG evenodd rendering works properly regardless of engine strictness
+                        if ((outerArea > 0 && holeArea > 0) || (outerArea < 0 && holeArea < 0)) {
+                            holePts.reverse();
+                        }
+
+                        // 2. Find closest vertices for the slit
+                        let minSq = Infinity;
+                        let bestOuter = 0;
+                        let bestHole = 0;
+                        for (let i = 0; i < m.points.length; i++) {
+                            for (let j = 0; j < holePts.length; j++) {
+                                const dx = m.points[i].x - holePts[j].x;
+                                const dy = m.points[i].y - holePts[j].y;
+                                const dSq = dx * dx + dy * dy;
+                                if (dSq < minSq) {
+                                    minSq = dSq;
+                                    bestOuter = i;
+                                    bestHole = j;
+                                }
+                            }
+                        }
+
+                        const newPoints: Point[] = [];
+                        const newEdges: string[] = [];
+                        const outerEdges = m.edgeTypes || new Array(m.points.length).fill('none');
+
+                        // 3. Splice!
+                        for (let i = 0; i <= bestOuter; i++) {
+                            newPoints.push(m.points[i]);
+                            if (i < bestOuter) newEdges.push(outerEdges[i]);
+                        }
+
+                        newEdges.push('slit');
+
+                        for (let j = 0; j < holePts.length; j++) {
+                            const idx = (bestHole + j) % holePts.length;
+                            newPoints.push(holePts[idx]);
+                            newEdges.push('cutout');
+                        }
+
+                        newPoints.push(holePts[bestHole]);
+                        newEdges.push('slit');
+
+                        newPoints.push(m.points[bestOuter]);
+                        newEdges.push(outerEdges[bestOuter]);
+
+                        for (let i = bestOuter + 1; i < m.points.length; i++) {
+                            newPoints.push(m.points[i]);
+                            newEdges.push(outerEdges[i]);
+                        }
+
+                        return { ...m, points: newPoints, edgeTypes: newEdges };
+                    });
+                    
+                    return { measurements: newMeasurements, subtractTargetPlaneId: null };
+                });
+                
+                // Recalculate areas and dependencies
+                const s = get();
+                const newData = recalculateRoofData(s.measurements, s.scale, s.pageScales);
+                s.updateBuildingData(newData);
+            },
+
             setWizardTool: (tag) => set({
                 activeWizardTool: tag,
-                activeTool: tag ? (tag === 'roof-plane' ? 'shape' : 'line') : 'select'
+                activeTool: tag ? ((tag === 'roof-plane' || tag === 'foundation-line' || tag === 'roof-subtract') ? 'shape' : 'line') : 'select'
             }),
 
             addRoofPlaneFromDimensions: (shape, dims, pitch) => {
@@ -447,10 +705,6 @@ export const useStore = create<AppState>()(
 
                 set({ measurements: [...measurements, newMeasurement] });
             },
-
-
-
-
 
             setActiveMeasurement: (activeMeasurementId) => set({activeMeasurementId}),
             setIsCalibrating: (isCalibrating) => set({isCalibrating, activeTool: 'select'}),
@@ -504,6 +758,7 @@ export const useStore = create<AppState>()(
                     roofLineType: roofType as any,
                     roofPlaneIndex,
                     roofPlaneShape,
+                    isFoundation: activeWizardTool?.startsWith('foundation-') || false,
                     pitch: extraProps.pitch || get().buildingData.roofPitch,
                     labels,
                     ...extraProps
@@ -512,12 +767,11 @@ export const useStore = create<AppState>()(
                 const allMeasurements = [...measurements, newMeasurement];
                 const updates: any = { measurements: allMeasurements };
 
-                if (activeWizardTool === 'foundation') {
+                if (activeWizardTool?.startsWith('foundation-')) {
+                    const { scale: s, pageScales } = get();
                     updates.buildingData = {
                         ...get().buildingData,
-                        foundationAreaId: newMeasurement.id,
-                        foundationPerimeterId: newMeasurement.id,
-                        foundationCorners: points.length
+                        ...recalculateFoundationData(allMeasurements, s, pageScales)
                     };
                 } else if (activeWizardTool && activeWizardTool.startsWith('roof-') && activeWizardTool !== 'roof-plane') {
                     const { scale: s, pageScales } = get();
@@ -559,6 +813,24 @@ export const useStore = create<AppState>()(
                                     return m;
                                 });
                             }
+                        }
+                    }
+
+                    // Recalculate buildingData live during drag for foundation/roof measurements
+                    const target = newMeasurements.find(m => m.id === id);
+                    if (updates.points && target) {
+                        const needsFoundation = target.isFoundation || newMeasurements.some(m => m.isFoundation && m.points.some(p => p.nodeId && target.points.some(tp => tp.nodeId === p.nodeId)));
+                        const needsRoof = !!target.roofPlaneIndex || !!target.roofLineType || newMeasurements.some(m => (m.roofPlaneIndex || m.roofLineType) && m.points.some(p => p.nodeId && target.points.some(tp => tp.nodeId === p.nodeId)));
+                        
+                        if (needsFoundation || needsRoof) {
+                            let newBuildingData = s.buildingData;
+                            if (needsFoundation) {
+                                newBuildingData = { ...newBuildingData, ...recalculateFoundationData(newMeasurements, s.scale, s.pageScales) };
+                            }
+                            if (needsRoof) {
+                                newBuildingData = { ...newBuildingData, ...recalculateRoofData(newMeasurements, s.scale, s.pageScales) };
+                            }
+                            return { measurements: newMeasurements, buildingData: newBuildingData };
                         }
                     }
 
@@ -611,10 +883,19 @@ export const useStore = create<AppState>()(
 
                     const target = s.measurements.find(m => m.id === id);
                     const roofChanged = target?.roofLineType || target?.roofPlaneIndex || processedUpdates.roofLineType !== undefined || processedUpdates.points || processedUpdates.pitch !== undefined;
-                    if (roofChanged) {
+                    const foundationChanged = target?.isFoundation || processedUpdates.isFoundation !== undefined || (target?.isFoundation && (processedUpdates.points || processedUpdates.foundationWallHeight !== undefined));
+                    
+                    if (roofChanged || foundationChanged) {
+                        let newBuildingData = s.buildingData;
+                        if (roofChanged) {
+                            newBuildingData = { ...newBuildingData, ...recalculateRoofData(newMeasurements, s.scale, s.pageScales) };
+                        }
+                        if (foundationChanged) {
+                            newBuildingData = { ...newBuildingData, ...recalculateFoundationData(newMeasurements, s.scale, s.pageScales) };
+                        }
                         return {
                             measurements: newMeasurements,
-                            buildingData: { ...s.buildingData, ...recalculateRoofData(newMeasurements, s.scale, s.pageScales) }
+                            buildingData: newBuildingData
                         };
                     }
                     return { measurements: newMeasurements };
@@ -632,6 +913,8 @@ export const useStore = create<AppState>()(
                     };
                     if (deleted?.roofLineType) {
                         result.buildingData = { ...s.buildingData, ...recalculateRoofData(remaining, s.scale, s.pageScales) };
+                    } else if (deleted?.isFoundation) {
+                        result.buildingData = { ...s.buildingData, ...recalculateFoundationData(remaining, s.scale, s.pageScales) };
                     }
                     return result;
                 });
@@ -749,6 +1032,7 @@ export const useStore = create<AppState>()(
         }),
         {
             name: 'takeoff-pro-db',
+            storage: createJSONStorage(() => idbStorage), // <-- ADD THIS LINE
             partialize: (state) => ({
                 materials: state.materials,
                 assemblyDefs: state.assemblyDefs,

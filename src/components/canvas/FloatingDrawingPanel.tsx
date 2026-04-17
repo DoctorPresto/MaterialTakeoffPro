@@ -142,15 +142,6 @@ export const FloatingDrawingPanel = ({
                             <Spline size={16} /> Draw Line
                         </button>
 
-                        <button
-                            onClick={() => onToolChange('shape')}
-                            className={`flex items-center gap-2 p-2 rounded text-sm font-medium transition-colors ${activeTool === 'shape'
-                                ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                                : 'hover:bg-gray-100 text-gray-600 border border-transparent'
-                            }`}
-                        >
-                            <Square size={16} /> Draw Shape
-                        </button>
 
                         <button
                             onClick={() => onToolChange('measure')}

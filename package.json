@@ -17,15 +17,17 @@
   },
   "dependencies": {
     "clsx": "^2.1.0",
+    "idb-keyval": "^6.2.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.309.0",
+    "mathjs": "^15.1.0",
     "pdfjs-dist": "5.4.296",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-pdf": "^10.3.0",
     "tailwind-merge": "^2.2.0",
     "uuid": "^9.0.1",
-    "zustand": "^4.5.0",
-    "mathjs": "^15.1.0"
+    "zustand": "^4.5.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
@@ -36,7 +38,7 @@
     "autoprefixer": "^10.4.17",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
-    "electron": "40.0.0",
+    "electron": "^40.9.1",
     "electron-builder": "^26.4.0",
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",

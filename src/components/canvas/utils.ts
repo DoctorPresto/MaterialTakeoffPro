@@ -17,11 +17,13 @@ export const GROUP_COLORS = [
 ];
 
 export const ROOF_LINE_COLORS: Record<string, string> = {
-    hip: '#f97316',    // orange
-    valley: '#3b82f6', // blue
-    ridge: '#22c55e',  // green
-    eave: '#6b7280',   // gray
-    gable: '#a855f7',  // purple
+    hip: '#ff0000',    // red
+    valley: '#fb7f03', // orange
+    ridge: '#000000',  // black
+    eave: '#0ab30a',   // green
+    gable: '#2121ff',  // blue
+    wall: '#a855f7',   // purple
+    transition: '#14b8a6', // teal
 };
 
 export const getGroupColor = (group: string | undefined, overrideColors: Record<string, string>): string => {

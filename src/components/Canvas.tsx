@@ -28,11 +28,10 @@ import {
 } from './canvas/utils';
 import { getDistance, getPathLength, getPolygonArea, getPolygonCentroid } from '../utils/math';
 
-// FIXED: Set worker source immediately outside component
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 //  CONSTANTS
-const SNAP_THRESHOLD_PX = 10;
+const SNAP_THRESHOLD_PX = 5;
 
 //  EXTERNAL HELPERS
 const formatArea = (areaSqFt: number) => `${Math.round(areaSqFt * 100) / 100} sq ft`;
@@ -96,7 +95,8 @@ const Canvas = () => {
         commitHistory, undo, redo, groupColors, setGroupColor, setGroupVisibility,
         pageScales, setPageScale, setMeasurements, toggleScaleLock,
         selectedRoofPlaneId, selectedRoofEdgeIndex, setSelectedRoofPlaneId, setSelectedRoofEdgeIndex,
-        activeWizardStep, setWizardStep
+        activeWizardStep, setWizardStep,
+        subtractTargetPlaneId, addSubtractionToPlane
     } = useStore();
 
     const [points, setPoints] = useState<Point[]>([]);
@@ -545,8 +545,14 @@ const Canvas = () => {
                 if (points.length >= 2) {
                     const firstPoint = points[0];
                     const distance = Math.sqrt(Math.pow(x - firstPoint.x, 2) + Math.pow(y - firstPoint.y, 2));
-                    const threshold = 15 / zoom;
+                    const threshold = 10 / zoom;
                     if (distance < threshold) {
+                        // Subtraction mode: store cutout on the target plane
+                        if (activeWizardTool === 'roof-subtract' && subtractTargetPlaneId) {
+                            addSubtractionToPlane(subtractTargetPlaneId, points);
+                            setPoints([]);
+                            return;
+                        }
                         const finalName = activeWizardTool || 'Shape';
                         addMeasurement('shape', points, finalName);
                         setPoints([]);
@@ -582,7 +588,7 @@ const Canvas = () => {
             if (activeTool === 'line' && points.length >= 3) {
                 const firstPoint = points[0];
                 const distance = Math.sqrt(Math.pow(x - firstPoint.x, 2) + Math.pow(y - firstPoint.y, 2));
-                const threshold = 15 / zoom;
+                const threshold = 10 / zoom;
                 if (distance < threshold) {
                     const finalName = activeWizardTool || 'Shape';
                     addMeasurement('shape', points, finalName);
@@ -662,6 +668,7 @@ const Canvas = () => {
             {/* Wizard Component Overlay */}
             <ProjectWizard />
 
+
             <FloatingDrawingPanel
                 activeTool={activeTool}
                 onToolChange={handleToolChange}
@@ -717,14 +724,25 @@ const Canvas = () => {
                     </button>
 
                     <button
-                        onClick={() => setWizardStep(activeWizardStep === 'none' ? 'roof' : 'none')}
-                        className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-bold shadow-sm transition-colors ${activeWizardStep !== 'none'
+                        onClick={() => setWizardStep(activeWizardStep === 'roof' ? 'none' : 'roof')}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-bold shadow-sm transition-colors ${activeWizardStep === 'roof'
                             ? 'bg-blue-600 text-white hover:bg-blue-700'
                             : 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100'
                             }`}
                     >
                         <Calculator size={14} />
                         Roof Wizard
+                    </button>
+
+                    <button
+                        onClick={() => setWizardStep(activeWizardStep === 'foundation' ? 'none' : 'foundation')}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded text-xs font-bold shadow-sm transition-colors ${activeWizardStep === 'foundation'
+                            ? 'bg-teal-600 text-white hover:bg-teal-700'
+                            : 'bg-teal-50 text-teal-600 border border-teal-200 hover:bg-teal-100'
+                            }`}
+                    >
+                        <Calculator size={14} />
+                        Foundation Wizard
                     </button>
 
                     <button
@@ -916,8 +934,11 @@ const Canvas = () => {
                                         <g key={m.id}>
                                             {m.type === 'shape' ? (
                                                 <>
-                                                    <polygon
-                                                        points={m.points.map(p => `${p.x},${p.y}`).join(' ')}
+                                                    <path
+                                                        fillRule="evenodd"
+                                                        d={[
+                                                            `M ${m.points.map(p => `${p.x},${p.y}`).join(' L ')} Z`
+                                                        ].join(' ')}
                                                         fill={(() => {
                                                             // Roof planes get distinct per-plane colors
                                                             if (m.roofPlaneIndex) {
@@ -942,15 +963,8 @@ const Canvas = () => {
                                                             const b = parseInt(color.slice(5, 7), 16);
                                                             return `rgba(${r}, ${g}, ${b}, ${opacity})`;
                                                         })()}
-                                                        stroke={(() => {
-                                                            if (m.roofPlaneIndex) {
-                                                                const planeStrokes = ['#6366f1', '#22c55e', '#f97316', '#a855f7', '#0ea5e9', '#ec4899', '#eab308', '#14b8a6'];
-                                                                return selectedShape === m.id ? '#3b82f6' : planeStrokes[(m.roofPlaneIndex - 1) % planeStrokes.length];
-                                                            }
-                                                            return selectedShape === m.id ? "#3b82f6" : color;
-                                                        })()}
+                                                        stroke="transparent"
                                                         strokeWidth={Math.max(1, (selectedShape === m.id ? 3 : 2) / zoom)}
-                                                        strokeDasharray={m.roofPlaneIndex ? `${8 / zoom} ${4 / zoom}` : undefined}
                                                         vectorEffect="non-scaling-stroke"
                                                         className="cursor-pointer"
                                                         onClick={(e) => {
@@ -959,15 +973,33 @@ const Canvas = () => {
                                                         }}
                                                     />
 
+
+
                                                     {m.points.map((p, idx) => {
                                                         const nextP = m.points[(idx + 1) % m.points.length];
                                                         const edgeType = m.edgeTypes ? m.edgeTypes[idx] : 'none';
                                                         const isSelectedEdge = selectedRoofPlaneId === m.id && selectedRoofEdgeIndex === idx;
 
-                                                        // For roofs, we always render a thick invisible stroke for hit testing, 
-                                                        // and a visible stroke if it has a type or is selected
-                                                        const strokeColor = isSelectedEdge ? "#3b82f6" : (edgeType && edgeType !== 'none' ? ROOF_LINE_COLORS[edgeType] : "transparent");
+                                                        const defaultPlaneStroke = (() => {
+                                                            if (m.roofPlaneIndex) {
+                                                                const planeStrokes = ['#6366f1', '#22c55e', '#f97316', '#a855f7', '#0ea5e9', '#ec4899', '#eab308', '#14b8a6'];
+                                                                return selectedShape === m.id ? '#3b82f6' : planeStrokes[(m.roofPlaneIndex - 1) % planeStrokes.length];
+                                                            }
+                                                            return selectedShape === m.id ? "#3b82f6" : color;
+                                                        })();
+
+                                                        const strokeColor = isSelectedEdge 
+                                                            ? "#3b82f6" 
+                                                            : (edgeType === 'slit' 
+                                                                ? "transparent" 
+                                                                : (edgeType === 'cutout' 
+                                                                    ? "#ef4444" 
+                                                                    : (edgeType && edgeType !== 'none' 
+                                                                        ? ROOF_LINE_COLORS[edgeType] 
+                                                                        : defaultPlaneStroke)));
+                                                                        
                                                         const strokeWidth = isSelectedEdge ? Math.max(8, 12 / zoom) : Math.max(4, 8 / zoom);
+                                                        const dashArray = edgeType === 'cutout' ? `${4 / zoom} ${2 / zoom}` : undefined;
 
                                                         return (
                                                             <g key={`edge-group-${idx}`}>
@@ -1000,6 +1032,7 @@ const Canvas = () => {
                                                                     x2={nextP.x} y2={nextP.y}
                                                                     stroke={strokeColor}
                                                                     strokeWidth={strokeWidth}
+                                                                    strokeDasharray={dashArray}
                                                                     className="pointer-events-none"
                                                                     vectorEffect="non-scaling-stroke"
                                                                 />
@@ -1088,6 +1121,17 @@ const Canvas = () => {
                                                                         strokeWidth={Math.max(8, 12 / zoom)}
                                                                         className="cursor-pointer"
                                                                         onMouseDown={(e) => handleEdgeMouseDown(e, m.id, sourceIdx, targetIdx)}
+                                                                        onDoubleClick={(e) => {
+                                                                            e.preventDefault();
+                                                                            e.stopPropagation();
+                                                                            if (activeWizardStep === 'none') {
+                                                                                const pos = screenToPdf(e.clientX, e.clientY);
+                                                                                const idxForInsertion = Math.abs(sourceIdx - targetIdx) > 1 
+                                                                                    ? Math.max(sourceIdx, targetIdx) 
+                                                                                    : Math.min(sourceIdx, targetIdx);
+                                                                                insertPointAfter(m.id, idxForInsertion, { x: pos.x, y: pos.y, connectsTo: [], nodeId: uuidv4() });
+                                                                            }
+                                                                        }}
                                                                         onContextMenu={(e) => handleEdgeRightClick(e, m.id, sourceIdx, targetIdx)}
                                                                         vectorEffect="non-scaling-stroke"
                                                                         style={{ pointerEvents: 'all' }}
@@ -1108,6 +1152,14 @@ const Canvas = () => {
                                                                     strokeWidth={Math.max(8, 12 / zoom)}
                                                                     className="cursor-pointer"
                                                                     onMouseDown={(e) => handleEdgeMouseDown(e, m.id, idx)}
+                                                                    onDoubleClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        if (activeWizardStep === 'none') {
+                                                                            const pos = screenToPdf(e.clientX, e.clientY);
+                                                                            insertPointAfter(m.id, idx, { x: pos.x, y: pos.y, connectsTo: [], nodeId: uuidv4() });
+                                                                        }
+                                                                    }}
                                                                     onContextMenu={(e) => handleEdgeRightClick(e, m.id, idx)}
                                                                     vectorEffect="non-scaling-stroke"
                                                                     style={{ pointerEvents: 'all' }}
@@ -1122,13 +1174,13 @@ const Canvas = () => {
                                                 <g key={`vertex-${idx}`}>
                                                     {/* Invisible larger hit area for easier clicking */}
                                                     <circle
-                                                        cx={p.x} cy={p.y} r={(activeWizardStep === 'roof' && activeTool === 'shape') ? 15 / zoom : Math.max(4, 6 / zoom)} fill="transparent"
+                                                        cx={p.x} cy={p.y} r={((activeWizardStep === 'roof' || activeWizardStep === 'foundation') && activeTool === 'shape') ? 15 / zoom : Math.max(4, 6 / zoom)} fill="transparent"
                                                         className="cursor-pointer"
                                                         onContextMenu={(e) => handlePointRightClick(e, m.id, idx)}
                                                         onMouseDown={(e) => {
                                                             if (e.button === 2) return; // Right click handled by onContextMenu
                                                             e.stopPropagation(); e.preventDefault();
-                                                            if (activeWizardStep === 'roof' && activeTool === 'shape') {
+                                                            if ((activeWizardStep === 'roof' || activeWizardStep === 'foundation') && activeTool === 'shape') {
                                                                 let updatedPoints = [...points];
                                                                 if (points.length >= 2 && p.nodeId === points[0].nodeId) {
                                                                     addMeasurement('shape', points, activeWizardTool || 'Shape');

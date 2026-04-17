@@ -1,5 +1,5 @@
 import { Point, Measurement } from '../types';
-import { getPolygonArea, getPathLength } from './math';
+import { getPolygonArea, getPathLength, getSlopeMultiplier } from './math';
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -24,13 +24,9 @@ export interface RoofSummary {
 
 // ─── Core Math ───────────────────────────────────────────────────
 
-/** slope factor = sqrt(1 + (pitch/12)²) */
-export const getSlopeFactor = (pitch: number): number =>
-    Math.sqrt(1 + Math.pow(pitch / 12, 2));
-
 /** True (slope-adjusted) area from plan area and pitch */
 export const computeTrueArea = (planArea: number, pitch: number): number =>
-    planArea * getSlopeFactor(pitch);
+    planArea * getSlopeMultiplier(pitch);
 
 /** Compute plan area for a shape defined by dimensions (in feet) */
 export const computeShapeArea = (
@@ -51,12 +47,6 @@ export const computeShapeArea = (
     }
 };
 
-// ─── Polygon Generation ─────────────────────────────────────────
-
-/**
- * Generate polygon points (in canvas px) for a shape, centered at (cx, cy).
- * Dimensions are in feet; `scale` converts feet → canvas pixels.
- */
 export const generatePlanePolygon = (
     shape: 'rectangle' | 'triangle' | 'trapezoid' | 'custom',
     dims: { width?: number; height?: number; topBase?: number; bottomBase?: number; customArea?: number },
@@ -190,7 +180,7 @@ export const getRoofSnapPoints = (
 
 // ─── Polygon Builder from Lines ─────────────────────────────────
 
-const ENDPOINT_TOLERANCE = 8; // px tolerance for matching endpoints
+const ENDPOINT_TOLERANCE = 5; // px tolerance for matching endpoints
 
 /** Check if two points are within tolerance */
 const pointsMatch = (a: Point, b: Point, tol = ENDPOINT_TOLERANCE): boolean =>

@@ -1,14 +1,14 @@
 import React, {useEffect, useState} from 'react';
+import JSZip from 'jszip';
 import {useStore} from '../store';
 import {Clock, FilePlus, FolderOpen} from 'lucide-react';
 
-//  New Project Modal
+
 const NewProjectModal = ({
                              isOpen, onClose, onCreate
                          }: { isOpen: boolean, onClose: () => void, onCreate: (name: string) => void }) => {
     const [name, setName] = useState('');
 
-    // Reset input when modal opens
     useEffect(() => {
         if (isOpen) setName('');
     }, [isOpen]);
@@ -56,12 +56,40 @@ const Dashboard = () => {
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const text = await file.text();
+
         try {
-            const data = JSON.parse(text);
-            if (data.version) loadEstimateFromFile(data);
+            const zip = new JSZip();
+            let unzipped;
+
+            try {
+                unzipped = await zip.loadAsync(file);
+            } catch (zipError) {
+                unzipped = null;
+            }
+
+            if (unzipped && unzipped.file("data.json")) {
+                const jsonText = await unzipped.file("data.json")!.async("string");
+                const data = JSON.parse(jsonText);
+
+                if (unzipped.file("blueprint.pdf")) {
+                    const pdfBase64 = await unzipped.file("blueprint.pdf")!.async("base64");
+                    data.data.pdfBase64 = `data:application/pdf;base64,${pdfBase64}`;
+                }
+
+                loadEstimateFromFile(data);
+            } else {
+                const text = await file.text();
+                const data = JSON.parse(text);
+
+                if (data.version) {
+                    loadEstimateFromFile(data);
+                } else {
+                    alert("File format not recognized.");
+                }
+            }
         } catch (err) {
-            alert("Invalid File");
+            console.error("Failed to parse or load .takeoff file:", err);
+            alert("Invalid File. Check console for details.");
         }
     };
 

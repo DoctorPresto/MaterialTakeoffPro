@@ -8,8 +8,8 @@ export type Point = {
 
 export type MeasurementType = 'line' | 'shape';
 
-// NEW: Specific roof line types for BMCC math logic
-export type RoofLineType = 'hip' | 'valley' | 'ridge' | 'eave' | 'gable' | null;
+// roof line types for BMCC math logic
+export type RoofLineType = 'hip' | 'valley' | 'ridge' | 'eave' | 'gable' | 'wall' | 'transition' | null;
 
 export interface LabelSettings {
     showEdgeLengths?: boolean;
@@ -40,6 +40,10 @@ export interface Measurement {
     roofPlaneShape?: 'rectangle' | 'triangle' | 'trapezoid' | 'custom';  // original shape type
     edgeTypes?: string[];     // Array of assigned line types for edges ('hip', 'valley', 'ridge', 'eave', 'gable')
     slopeDirection?: Point[]; // Two points defining the UP direction arrow (e.g. from eave to ridge)
+
+    // Foundation properties
+    isFoundation?: boolean;
+    foundationWallHeight?: number; // Wall height in feet for this section (default 8)
 }
 
 export interface MaterialVariant {
@@ -157,6 +161,11 @@ export interface BuildingData {
     // Foundation Extras
     foundationWallHeight: number;
     foundationCorners: number;
+    foundationPerimeter: number;
+    foundationTees: number;
+    foundationStraightBlocksPerCourse: number;
+    foundationHVClips: number;
+    foundationRebar: number;
 
     // Framing / Main Floor
     mainFloorPerimeter: number;
@@ -174,6 +183,11 @@ export interface BuildingData {
     roofHipLength: number;
     roofEaveLength: number;
     roofGableLength: number;
+    roofWallLength: number;
+    roofTransitionLength: number;
+
+    // Steel Roofing
+    steelCoverageWidth: 36 | 31 | 29 | 16;
 }
 
 export interface EstimateFile {
